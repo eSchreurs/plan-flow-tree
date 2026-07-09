@@ -183,17 +183,32 @@ function PlannerInner() {
     [state.edges],
   );
 
+  const [nodes, setNodes] = useState<Node[]>(derivedNodes);
+  useEffect(() => {
+    setNodes((prev) =>
+      derivedNodes.map((d) => {
+        const p = prev.find((x) => x.id === d.id);
+        return p
+          ? { ...d, width: p.width, height: p.height, positionAbsolute: p.positionAbsolute }
+          : d;
+      }),
+    );
+  }, [derivedNodes]);
+
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      // apply position changes to store
-      setState((s) => {
-        changes.forEach((c) => {
-          if (c.type === "position" && c.position) {
+      setNodes((ns) => applyNodeChanges(changes, ns));
+      const positionCommits: NodeChange[] = changes.filter(
+        (c) => c.type === "position" && (c as any).position && (c as any).dragging === false,
+      );
+      if (positionCommits.length) {
+        setState((s) => {
+          positionCommits.forEach((c: any) => {
             s.positions[c.id] = c.position;
-          }
+          });
+          return s;
         });
-        return s;
-      });
+      }
     },
     [setState],
   );
