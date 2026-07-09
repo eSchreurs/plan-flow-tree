@@ -299,8 +299,6 @@ function PlannerInner() {
         s.tasks = s.tasks.filter((t) => !toRemove.has(t.id));
         s.edges = s.edges.filter((e) => !toRemove.has(e.source) && !toRemove.has(e.target));
       }
-      toRemove: {
-      }
       return s;
     });
   };
