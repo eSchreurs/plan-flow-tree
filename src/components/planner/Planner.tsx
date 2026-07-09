@@ -84,7 +84,7 @@ function PlannerInner() {
     return edges;
   }, [state.tasks]);
 
-  const nodes = useMemo<Node[]>(() => {
+  const derivedNodes = useMemo<Node[]>(() => {
     const list: Node[] = [];
     state.phases.forEach((p) => {
       const b = blocked.get(p.id) ?? { blocked: false, ready: false };
