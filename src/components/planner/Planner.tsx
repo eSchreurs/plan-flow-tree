@@ -63,7 +63,7 @@ function PlannerInner() {
           targetHandle: "parent",
           type: "smoothstep",
           style: { stroke: "hsl(var(--planner-tree))", strokeWidth: 1 },
-          selectable: false,
+          deletable: false,
           focusable: false,
         });
       } else {
@@ -76,7 +76,7 @@ function PlannerInner() {
           targetHandle: "parent",
           type: "smoothstep",
           style: { stroke: "hsl(var(--planner-tree))", strokeWidth: 1 },
-          selectable: false,
+          deletable: false,
           focusable: false,
         });
       }
