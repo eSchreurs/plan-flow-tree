@@ -1,5 +1,5 @@
 import type { Dependency, ID, PlanItem } from "./types";
-import { childrenMap, itemMap } from "./logic";
+import { allowedChildTypes, childrenMap, itemMap } from "./logic";
 
 /**
  * Deterministic auto-layout. Recomputed from scratch on every change so the
@@ -220,4 +220,108 @@ export function layoutProject(items: PlanItem[], deps: Dependency[]): LayoutResu
   }
 
   return { rects, containerOf };
+}
+
+export interface InsertTarget {
+  parentId: ID | null;
+  /** Sibling order for the new item (fractional to slot between neighbours). */
+  order: number;
+  /** True when the point falls between two existing siblings. */
+  between: boolean;
+}
+
+/**
+ * Resolve a canvas point (flow coordinates) to "where would a new item go":
+ * the deepest item whose subtree area contains the point becomes the parent
+ * scope (climbing up until a type that can have children), and the vertical
+ * position picks the slot between its siblings. Powers right-click-to-add.
+ */
+export function insertTargetAt(
+  items: PlanItem[],
+  layout: LayoutResult,
+  point: { x: number; y: number },
+): InsertTarget {
+  const byId = itemMap(items);
+  const children = childrenMap(items);
+  const MARGIN = 14;
+
+  const bboxCache = new Map<ID, Rect>();
+  const subtreeBBox = (id: ID): Rect => {
+    const cached = bboxCache.get(id);
+    if (cached) return cached;
+    let box = layout.rects.get(id) ?? { x: 0, y: 0, w: 0, h: 0 };
+    for (const kid of children.get(id) ?? []) {
+      const kidBox = subtreeBBox(kid.id);
+      const x = Math.min(box.x, kidBox.x);
+      const y = Math.min(box.y, kidBox.y);
+      box = {
+        x,
+        y,
+        w: Math.max(box.x + box.w, kidBox.x + kidBox.w) - x,
+        h: Math.max(box.y + box.h, kidBox.y + kidBox.h) - y,
+      };
+    }
+    bboxCache.set(id, box);
+    return box;
+  };
+  const contains = (box: Rect, margin: number) =>
+    point.x >= box.x - margin &&
+    point.x <= box.x + box.w + margin &&
+    point.y >= box.y - margin &&
+    point.y <= box.y + box.h + margin;
+
+  const depthOf = (id: ID): number => {
+    let depth = 0;
+    let current = byId.get(id);
+    const guard = new Set<ID>();
+    while (current?.parentId && !guard.has(current.id)) {
+      guard.add(current.id);
+      depth++;
+      current = byId.get(current.parentId);
+    }
+    return depth;
+  };
+
+  // Deepest item whose subtree area (or container box for categories) holds the point.
+  let scope: ID | null = null;
+  let bestDepth = -1;
+  for (const item of items) {
+    if (!contains(subtreeBBox(item.id), MARGIN)) continue;
+    const depth = depthOf(item.id);
+    if (depth > bestDepth) {
+      bestDepth = depth;
+      scope = item.id;
+    }
+  }
+  // Climb until the scope can actually contain children (a task cannot).
+  while (scope && allowedChildTypes(byId.get(scope)!.type).length === 0) {
+    scope = byId.get(scope)!.parentId;
+  }
+
+  // Slot between siblings by vertical position, preferring the column under
+  // the pointer (dependency layers spread siblings across columns).
+  const siblings = (children.get(scope) ?? []).slice().sort((a, b) => a.order - b.order);
+  const inColumn = siblings.filter((s) => {
+    const rect = layout.rects.get(s.id);
+    return rect && point.x >= rect.x - MARGIN && point.x <= rect.x + rect.w + MARGIN;
+  });
+  const pool = inColumn.length > 0 ? inColumn : siblings;
+  let prev: PlanItem | null = null;
+  for (const sibling of pool) {
+    const rect = layout.rects.get(sibling.id);
+    if (rect && rect.y + rect.h / 2 <= point.y && (!prev || sibling.order > prev.order)) {
+      prev = sibling;
+    }
+  }
+  const next = prev ? (siblings.find((s) => s.order > prev.order) ?? null) : (siblings[0] ?? null);
+
+  const order =
+    prev && next
+      ? (prev.order + next.order) / 2
+      : prev
+        ? prev.order + 1
+        : next
+          ? next.order - 1
+          : 0;
+  return { parentId: scope, order, between: !!(prev && next) };
 }

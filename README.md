@@ -30,6 +30,11 @@ are seeded on first launch.
   phases are colored pills and tasks are checkable cards. No overlaps, no manual tidying.
 - **Per-item styling** — title, description and a color for every item via the inspector
   panel.
+- **Right-click everything** — the canvas is driven by context menus: right-click inside
+  a category/requirement/phase to add items to it, right-click the gap between two items
+  to insert one exactly there, right-click empty canvas for root items, right-click a
+  node to add siblings, duplicate, mark done or delete, and right-click a dependency
+  arrow to remove it. Enter confirms the highlighted entry, Esc cancels.
 
 ## Getting started
 
