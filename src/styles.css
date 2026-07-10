@@ -1,339 +1,363 @@
 @import "tailwindcss" source(none);
 @source "../src";
-@import "tw-animate-css";
-
-@custom-variant dark (&:is(.dark *));
-
-@theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-}
+@source "../index.html";
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.18 0.02 260);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.02 260);
-  --primary: oklch(0.18 0.02 260);
-  --primary-foreground: oklch(0.99 0 0);
-  --muted: oklch(0.97 0.005 260);
-  --muted-foreground: oklch(0.5 0.02 260);
-  --border: oklch(0.92 0.008 260);
-  --input: oklch(0.92 0.008 260);
-  --ring: oklch(0.7 0.04 260);
-
-  /* Phase palette (soft pastels) */
-  --phase-red: oklch(0.93 0.06 25);
-  --phase-orange: oklch(0.94 0.06 55);
-  --phase-yellow: oklch(0.95 0.07 95);
-  --phase-green: oklch(0.94 0.06 155);
-  --phase-blue: oklch(0.94 0.05 235);
-  --phase-purple: oklch(0.93 0.05 300);
-
-  /* Planner canvas tokens (HSL for compatibility with existing hsl() usage) */
-  --planner-bg: 40 33% 98%;
-  --planner-dot: 220 15% 88%;
-  --planner-tree: 220 13% 82%;
-  --planner-dep: 220 10% 55%;
+  --edge-select: #3b82f6;
 }
 
-@layer base {
-  * {
-    border-color: var(--color-border);
-  }
-  body {
-    background-color: var(--color-background);
-    color: var(--color-foreground);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
-  }
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", sans-serif;
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* ============ Planner ============ */
+/* ================= Planner nodes =================
+   Each node receives its accent as the `--item` variable (hex from colors.ts);
+   soft shades are derived here with color-mix. */
 
-.planner-root {
+.pf-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
+  font-size: 12.5px;
+  transition:
+    opacity 0.15s,
+    box-shadow 0.15s;
+}
+
+.pf-body {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  background: hsl(var(--planner-bg));
+  gap: 1px;
 }
-
-.planner-header {
-  display: flex;
-  align-items: center;
-  padding: 16px 24px 8px;
-}
-.planner-project-name {
-  font-size: 18px;
-  font-weight: 600;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--color-foreground);
-  padding: 4px 6px;
-  border-radius: 6px;
-}
-.planner-project-name:hover,
-.planner-project-name:focus {
-  background: var(--color-muted);
-}
-
-.planner-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 24px 12px;
-  border-bottom: 1px solid var(--color-border);
-  background: hsl(var(--planner-bg));
-}
-.planner-toolbar-group {
+.pf-row {
   display: flex;
   align-items: center;
   gap: 6px;
-}
-.planner-btn,
-.planner-btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 500;
-  background: white;
-  color: var(--color-foreground);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.planner-btn-ghost {
-  background: transparent;
-  border-color: transparent;
-  color: var(--color-muted-foreground);
-}
-.planner-btn:hover,
-.planner-btn-ghost:hover {
-  background: var(--color-muted);
-}
-.planner-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: white;
-  color: var(--color-foreground);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.15s;
-}
-.planner-icon-btn:hover {
-  background: var(--color-muted);
-}
-.planner-icon-btn.is-active {
-  background: oklch(0.95 0.05 260);
-  border-color: oklch(0.7 0.15 260);
-  color: oklch(0.5 0.2 260);
-}
-.planner-divider {
-  width: 1px;
-  height: 20px;
-  background: var(--color-border);
-  margin: 0 4px;
-}
-.planner-zoom {
-  font-size: 12px;
-  color: var(--color-muted-foreground);
-  width: 36px;
-  text-align: center;
+  min-height: 20px;
 }
 
-.planner-canvas {
-  flex: 1;
-  position: relative;
-}
-
-/* Phase node */
-.planner-phase {
-  width: 220px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  background: var(--phase-color);
-  border: 1px solid oklch(from var(--phase-color) calc(l - 0.1) c h);
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 600;
-  color: oklch(0.25 0.03 260);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
-}
-
-/* Task node */
-.planner-task {
-  width: 220px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  background: white;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  font-size: 12px;
-  color: var(--color-foreground);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
-  position: relative;
-}
-.planner-task.is-done {
-  opacity: 0.6;
-}
-.planner-task.is-done .planner-title {
-  text-decoration: line-through;
-  color: var(--color-muted-foreground);
-}
-.planner-task.is-blocked,
-.planner-phase.is-blocked {
-  opacity: 0.55;
-}
-.planner-task.is-ready,
-.planner-phase.is-ready {
-  box-shadow: 0 0 0 2px oklch(0.75 0.15 150), 0 1px 2px rgb(0 0 0 / 0.04);
-}
-.planner-task.is-selected,
-.planner-phase.is-selected {
-  outline: 2px solid oklch(0.7 0.15 260);
-  outline-offset: 2px;
-}
-
-.planner-check {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  border: 1.5px solid var(--color-border);
-  border-radius: 4px;
-  background: white;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: oklch(0.5 0.2 260);
-  padding: 0;
-}
-.planner-check:hover {
-  border-color: oklch(0.6 0.1 260);
-}
-.planner-code {
-  font-size: 11px;
-  color: var(--color-muted-foreground);
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}
-.planner-title {
+.pf-title {
   flex: 1;
   min-width: 0;
   background: transparent;
   border: none;
   outline: none;
   font: inherit;
+  font-weight: 500;
   color: inherit;
   padding: 0;
+  text-overflow: ellipsis;
 }
-.planner-trash {
-  flex-shrink: 0;
-  background: transparent;
-  border: none;
-  color: var(--color-muted-foreground);
-  cursor: pointer;
-  padding: 2px;
-  border-radius: 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.planner-task:hover .planner-trash,
-.planner-phase:hover .planner-trash {
-  opacity: 1;
-}
-.planner-trash:hover {
-  color: oklch(0.55 0.22 25);
-  background: oklch(0.95 0.03 25);
+.pf-title::placeholder {
+  color: #94a3b8;
 }
 
-.planner-add-child {
-  position: absolute;
-  bottom: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: white;
-  border: 1px solid var(--color-border);
-  color: var(--color-muted-foreground);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.15s;
-  z-index: 5;
-  padding: 0;
-}
-.planner-task:hover .planner-add-child {
-  opacity: 1;
-}
-.planner-add-child:hover {
-  color: oklch(0.5 0.2 260);
-  border-color: oklch(0.7 0.15 260);
-}
-
-/* React Flow handles: hide default, use custom right-side dot */
-.react-flow__handle.planner-handle {
-  width: 8px;
-  height: 8px;
-  background: white;
-  border: 1.5px solid var(--color-border);
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.planner-task:hover .react-flow__handle.planner-handle,
-.planner-phase:hover .react-flow__handle.planner-handle {
-  opacity: 1;
-}
-.react-flow__handle.planner-handle-source {
-  background: oklch(0.7 0.15 260);
-  border-color: oklch(0.5 0.2 260);
-}
-.react-flow__handle.planner-handle-hidden {
-  opacity: 0 !important;
-  pointer-events: none;
-  width: 1px;
-  height: 1px;
-  background: transparent;
-  border: none;
-}
-
-/* React Flow overrides */
-.react-flow__controls {
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
-  border-radius: 8px;
+.pf-desc {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #64748b;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+.pf-type-icon {
+  flex-shrink: 0;
+  color: var(--item);
+}
+
+/* ---- task card ---- */
+.pf-task .pf-title {
+  font-weight: 450;
+}
+.pf-task.is-done .pf-title {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+.pf-task.is-done {
+  opacity: 0.7;
+}
+
+/* ---- phase: soft colored pill ---- */
+.pf-phase {
+  background: color-mix(in srgb, var(--item) 12%, #fff);
+  border-color: color-mix(in srgb, var(--item) 38%, #fff);
+}
+.pf-phase .pf-title {
+  font-weight: 600;
+  font-size: 12.5px;
+  color: color-mix(in srgb, var(--item) 60%, #0f172a);
+}
+
+/* ---- requirement: header card with accent bar ---- */
+.pf-req {
+  border-left: 4px solid var(--item);
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+}
+.pf-req .pf-title {
+  font-weight: 650;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
+/* ---- category: group container ---- */
+.pf-cat {
+  width: 100%;
+  height: 100%;
+  border-radius: 14px;
+  border: 1.5px solid color-mix(in srgb, var(--item) 42%, #fff);
+  background: color-mix(in srgb, var(--item) 5%, #fff);
+  transition: opacity 0.15s;
+}
+.pf-cat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 14px;
+  border-bottom: 1px dashed color-mix(in srgb, var(--item) 30%, #fff);
+  pointer-events: all;
+  cursor: default;
+}
+.pf-cat-header .pf-type-icon {
+  margin-top: 0;
+}
+.pf-cat-header .pf-title {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: color-mix(in srgb, var(--item) 55%, #0f172a);
+}
+.pf-cat-empty {
+  padding: 16px 14px;
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+
+/* Category boxes must not swallow canvas panning: the node ignores pointer
+   events, the header and handles re-enable them. */
+.react-flow__node-category {
+  pointer-events: none !important;
+}
+.react-flow__node-category .react-flow__handle {
+  pointer-events: all;
+}
+
+/* ---- shared state styles ---- */
+.is-blocked {
+  opacity: 0.45;
+}
+.pf-cat.is-blocked {
+  opacity: 0.55;
+}
+
+.pf-lock {
+  flex-shrink: 0;
+  color: #b45309;
+  display: flex;
+  align-items: center;
+}
+
+.react-flow__node.selected .pf-node,
+.react-flow__node.selected .pf-cat {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--edge-select);
+}
+
+/* ---- check button / progress badge ---- */
+.pf-check {
+  flex-shrink: 0;
+  width: 17px;
+  height: 17px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 5px;
+  background: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  padding: 0;
+  transition: all 0.12s;
+}
+.pf-check:hover:not(:disabled) {
+  border-color: #22c55e;
+}
+.pf-check.is-done {
+  background: #22c55e;
+  border-color: #22c55e;
+}
+.pf-check:disabled {
+  cursor: not-allowed;
+  background: #f1f5f9;
+}
+.pf-check.is-derived {
+  cursor: default;
+}
+.pf-progress {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--item) 70%, #334155);
+  background: color-mix(in srgb, var(--item) 14%, #fff);
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+
+/* ---- add-child button + menu ---- */
+.pf-add {
+  position: relative;
+  flex-shrink: 0;
+  align-self: center;
+}
+.pf-add-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #94a3b8;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.pf-node:hover .pf-add-btn,
+.pf-cat-header:hover .pf-add-btn,
+.pf-add-btn:focus-visible,
+.react-flow__node.selected .pf-add-btn {
+  opacity: 1;
+}
+.pf-add-btn:hover {
+  color: #2563eb;
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+.pf-add-backdrop {
+  position: fixed;
+  inset: -100vh -100vw;
+  z-index: 9;
+}
+.pf-add-menu {
+  position: absolute;
+  top: 22px;
+  right: 0;
+  z-index: 10;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 0.14);
+}
+.pf-add-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  text-align: left;
+}
+.pf-add-menu button:hover {
+  background: #f1f5f9;
+}
+
+/* ================= React Flow overrides ================= */
+
+.react-flow__handle.pf-handle {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid #94a3b8;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.react-flow__handle.pf-handle-out {
+  background: var(--item, #64748b);
+  border-color: color-mix(in srgb, var(--item, #64748b) 70%, #000);
+}
+.react-flow__node:hover .react-flow__handle.pf-handle,
+.react-flow__node.selected .react-flow__handle.pf-handle,
+.react-flow__handle.pf-handle.connectionindicator {
+  opacity: 1;
+}
+
+.react-flow__handle.pf-handle-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  border: none;
+  background: transparent;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--edge-select) !important;
+  stroke-width: 2.4 !important;
+  stroke-dasharray: none !important;
+}
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke-width: 2.4;
+}
+
+.react-flow__connection-path {
+  stroke: var(--edge-select);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.react-flow__controls {
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgb(15 23 42 / 0.1);
+  border: 1px solid #e2e8f0;
+}
 .react-flow__controls-button {
-  background: white;
-  border-bottom: 1px solid var(--color-border);
+  background: #fff;
+  border-bottom: 1px solid #eef2f6;
+  width: 26px;
+  height: 26px;
+}
+.react-flow__controls-button:hover {
+  background: #f8fafc;
+}
+
+.react-flow__minimap {
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgb(15 23 42 / 0.1);
+  border: 1px solid #e2e8f0;
+}
+
+.react-flow__attribution {
+  display: none;
 }
