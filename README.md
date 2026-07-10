@@ -50,6 +50,22 @@ bun run format     # prettier --write
 
 npm/pnpm work too if you prefer them over bun.
 
+## Deploying
+
+The build is fully static (`dist/`) with **relative asset paths and hash routing**, so it
+runs from any URL — a domain root, a subfolder, or GitHub Pages — with no server config.
+
+- **Hostinger (automated)** — `.github/workflows/deploy-hostinger.yml` builds on every
+  push to `main` and deploys `dist/` over FTPS. One-time setup: add
+  `HOSTINGER_FTP_SERVER`, `HOSTINGER_FTP_USERNAME` and `HOSTINGER_FTP_PASSWORD` as
+  repository secrets (credentials from hPanel → Files → FTP Accounts) and adjust
+  `server-dir` in the workflow if you don't want it under `public_html/planflow/`.
+  Until the secrets exist the deploy step is skipped, but every run still uploads a
+  `dist` artifact you can download and drop into Hostinger's File Manager by hand.
+- **GitHub Pages (manual trigger)** — `.github/workflows/deploy-pages.yml` publishes to
+  `https://<owner>.github.io/plan-flow-tree/`. Run it from the Actions tab. Note: on a
+  free GitHub plan Pages requires the repository to be public.
+
 ## Stack
 
 - [React 19](https://react.dev) + [Vite](https://vite.dev) — plain SPA, no SSR
