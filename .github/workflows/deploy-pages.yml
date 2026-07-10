@@ -1,13 +1,17 @@
-# Deploys the app to GitHub Pages (https://<owner>.github.io/plan-flow-tree/).
+# Deploys the app to GitHub Pages (https://<owner>.github.io/plan-flow-tree/)
+# on every push to main, or manually from the Actions tab.
 #
-# Note: on a free GitHub plan, Pages only works for PUBLIC repositories.
-# Trigger is manual (Actions tab → "Deploy to GitHub Pages" → Run workflow)
-# so a private repo doesn't collect failed runs; switch the trigger to
-# `push: branches: [main]` if you adopt Pages permanently.
+# One-time setup: repo Settings → Pages → "Build and deployment" →
+# Source: "GitHub Actions". The workflow also tries to enable Pages by itself,
+# but GitHub's API often refuses that for the workflow token ("Resource not
+# accessible by integration") — the Settings toggle always works.
+# Note: on a free GitHub plan, Pages requires the repository to be public.
 
 name: Deploy to GitHub Pages
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -33,10 +37,20 @@ jobs:
       - name: Build
         run: bun run build
 
-      - name: Configure Pages
+      - name: Enable GitHub Pages (best effort)
+        continue-on-error: true
         uses: actions/configure-pages@v5
         with:
           enablement: true
+
+      - name: Verify GitHub Pages is enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh api "repos/${{ github.repository }}/pages" --silent; then
+            echo "::error::GitHub Pages could not be enabled automatically. One-time fix: Settings → Pages → 'Build and deployment' → Source: 'GitHub Actions', then re-run this workflow. (On a free plan the repository must be public.)"
+            exit 1
+          fi
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
