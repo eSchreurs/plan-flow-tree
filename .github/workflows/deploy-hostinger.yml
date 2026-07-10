@@ -1,0 +1,61 @@
+# Builds the app on every push to main and deploys dist/ to Hostinger over FTPS.
+#
+# One-time setup (repo Settings → Secrets and variables → Actions → New repository secret):
+#   HOSTINGER_FTP_SERVER    e.g. ftp.yourdomain.com (hPanel → Files → FTP Accounts)
+#   HOSTINGER_FTP_USERNAME
+#   HOSTINGER_FTP_PASSWORD
+#
+# Until the secrets exist the deploy step is skipped, but every run still
+# uploads a `dist` artifact you can download and drop into Hostinger's
+# File Manager by hand.
+#
+# Adjust `server-dir` below to where the site should live (it is created if
+# missing). The build uses relative paths, so any folder works.
+
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: hostinger-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Check FTP secrets
+        id: ftp
+        env:
+          FTP_SERVER: ${{ secrets.HOSTINGER_FTP_SERVER }}
+        run: echo "configured=$([ -n "$FTP_SERVER" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy over FTPS
+        if: steps.ftp.outputs.configured == 'true'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
+          username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
+          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: dist/
+          server-dir: public_html/planflow/
