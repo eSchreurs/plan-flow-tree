@@ -26,12 +26,13 @@ import {
   itemMap,
   projectProgress,
 } from "@/lib/logic";
-import { layoutProject } from "@/lib/layout";
+import { insertTargetAt, layoutProject } from "@/lib/layout";
 import { COLOR_HEX, EDGE_PENDING, EDGE_SATISFIED, EDGE_TREE } from "@/lib/colors";
 import { addDep, addItem, deleteDep, renameProject, useAppState } from "@/lib/store";
 import { navigate } from "@/lib/router";
 import { nodeTypes, TYPE_ICON, type PlanNodeData } from "./nodes";
 import { Inspector, type Selection } from "./Inspector";
+import { ContextMenu, type MenuState } from "./ContextMenu";
 import { toast } from "../Toast";
 
 export function PlannerPage({ projectId }: { projectId: ID }) {
@@ -53,6 +54,7 @@ export function PlannerPage({ projectId }: { projectId: ID }) {
 function PlannerInner({ project }: { project: Project }) {
   const [selection, setSelection] = useState<Selection>(null);
   const [justAdded, setJustAdded] = useState<ID | null>(null);
+  const [menu, setMenu] = useState<MenuState | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const reactFlow = useReactFlow();
 
@@ -69,13 +71,40 @@ function PlannerInner({ project }: { project: Project }) {
   );
 
   const handleAddChild = useCallback(
-    (parentId: ID | null, type: ItemType) => {
-      const id = addItem(project.id, type, parentId);
+    (parentId: ID | null, type: ItemType, order?: number) => {
+      const id = addItem(project.id, type, parentId, { order });
       setSelection({ kind: "item", id });
       setJustAdded(id);
     },
     [project.id],
   );
+
+  // ---- right-click context menus ----
+  const openPaneMenu = useCallback(
+    (event: React.MouseEvent | MouseEvent) => {
+      event.preventDefault();
+      const bounds = canvasRef.current?.getBoundingClientRect();
+      if (!bounds) return;
+      const point = reactFlow.project({
+        x: event.clientX - bounds.left,
+        y: event.clientY - bounds.top,
+      });
+      const target = insertTargetAt(project.items, layout, point);
+      setMenu({ kind: "pane", x: event.clientX, y: event.clientY, ...target });
+    },
+    [project.items, layout, reactFlow],
+  );
+
+  const openNodeMenu = useCallback((event: React.MouseEvent, node: Node) => {
+    event.preventDefault();
+    setMenu({ kind: "node", x: event.clientX, y: event.clientY, itemId: node.id });
+  }, []);
+
+  const openEdgeMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
+    event.preventDefault();
+    if (edge.id.startsWith("tree-")) return; // hierarchy connectors are not editable
+    setMenu({ kind: "edge", x: event.clientX, y: event.clientY, depId: edge.id });
+  }, []);
 
   const nodes = useMemo<Node<PlanNodeData>[]>(() => {
     const ordered = [...project.items].sort(
@@ -192,12 +221,16 @@ function PlannerInner({ project }: { project: Project }) {
     [project.id],
   );
 
-  // Delete selected dependency with the keyboard; Escape clears the selection.
+  // Delete selected dependency with the keyboard; Escape closes the context
+  // menu first, then clears the selection.
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
       if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
-      if (event.key === "Escape") setSelection(null);
+      if (event.key === "Escape") {
+        if (menu) setMenu(null);
+        else setSelection(null);
+      }
       if ((event.key === "Delete" || event.key === "Backspace") && selection?.kind === "dep") {
         deleteDep(project.id, selection.id);
         setSelection(null);
@@ -205,7 +238,7 @@ function PlannerInner({ project }: { project: Project }) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selection, project.id]);
+  }, [selection, menu, project.id]);
 
   // Pan to a freshly added node when it lands outside the current viewport.
   useEffect(() => {
@@ -301,7 +334,7 @@ function PlannerInner({ project }: { project: Project }) {
           </span>
         )}
         <span className="ml-auto hidden text-[11.5px] text-slate-400 md:block">
-          Drag from a node’s right dot to another node to add a dependency
+          Right-click anywhere to add or edit · drag from a right dot to link a dependency
         </span>
       </div>
 
@@ -315,6 +348,9 @@ function PlannerInner({ project }: { project: Project }) {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onPaneClick={() => setSelection(null)}
+            onPaneContextMenu={openPaneMenu}
+            onNodeContextMenu={openNodeMenu}
+            onEdgeContextMenu={openEdgeMenu}
             nodesDraggable={false}
             nodesConnectable
             elementsSelectable
@@ -353,6 +389,15 @@ function PlannerInner({ project }: { project: Project }) {
           onSelect={setSelection}
         />
       </div>
+      {menu && (
+        <ContextMenu
+          menu={menu}
+          project={project}
+          onAdd={handleAddChild}
+          onSelect={setSelection}
+          onClose={() => setMenu(null)}
+        />
+      )}
     </div>
   );
 }

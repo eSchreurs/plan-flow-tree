@@ -142,7 +142,12 @@ function defaultColor(type: ItemType, items: PlanItem[]): ColorKey {
   return CONTAINER_COLOR_ROTATION[count % CONTAINER_COLOR_ROTATION.length];
 }
 
-export function addItem(projectId: ID, type: ItemType, parentId: ID | null, title?: string): ID {
+export function addItem(
+  projectId: ID,
+  type: ItemType,
+  parentId: ID | null,
+  opts?: { title?: string; order?: number },
+): ID {
   const id = uid();
   withProject(projectId, (project) => {
     const siblings = project.items.filter((i) => i.parentId === parentId);
@@ -150,14 +155,53 @@ export function addItem(projectId: ID, type: ItemType, parentId: ID | null, titl
       id,
       type,
       parentId,
-      title: title ?? `New ${TYPE_LABEL[type].toLowerCase()}`,
+      title: opts?.title ?? `New ${TYPE_LABEL[type].toLowerCase()}`,
       description: "",
       color: defaultColor(type, project.items),
       done: false,
-      order: Math.max(-1, ...siblings.map((s) => s.order)) + 1,
+      // Fractional orders let an item slot in between two siblings without
+      // renumbering the rest.
+      order: opts?.order ?? Math.max(-1, ...siblings.map((s) => s.order)) + 1,
     });
   });
   return id;
+}
+
+/** Deep-copy an item (and its subtree + internal dependencies) right after itself. */
+export function duplicateItem(projectId: ID, itemId: ID): ID | null {
+  const project = state.projects.find((p) => p.id === projectId);
+  const original = project?.items.find((i) => i.id === itemId);
+  if (!project || !original) return null;
+
+  const ids = subtreeIds(project.items, itemId);
+  const idMap = new Map<ID, ID>();
+  for (const oldId of ids) idMap.set(oldId, uid());
+
+  const siblings = project.items
+    .filter((i) => i.parentId === original.parentId)
+    .sort((a, b) => a.order - b.order);
+  const next = siblings.find((s) => s.order > original.order);
+  const order = next ? (original.order + next.order) / 2 : original.order + 1;
+
+  withProject(projectId, (draft) => {
+    const copies = draft.items
+      .filter((i) => ids.has(i.id))
+      .map((i) => ({
+        ...i,
+        id: idMap.get(i.id)!,
+        parentId: i.id === itemId ? i.parentId : (idMap.get(i.parentId!) ?? i.parentId),
+        order: i.id === itemId ? order : i.order,
+      }));
+    draft.items.push(...copies);
+    for (const dep of draft.deps.filter((d) => ids.has(d.source) && ids.has(d.target))) {
+      draft.deps.push({
+        id: uid(),
+        source: idMap.get(dep.source)!,
+        target: idMap.get(dep.target)!,
+      });
+    }
+  });
+  return idMap.get(itemId) ?? null;
 }
 
 export function updateItem(
