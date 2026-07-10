@@ -62,9 +62,10 @@ runs from any URL — a domain root, a subfolder, or GitHub Pages — with no se
   `server-dir` in the workflow if you don't want it under `public_html/planflow/`.
   Until the secrets exist the deploy step is skipped, but every run still uploads a
   `dist` artifact you can download and drop into Hostinger's File Manager by hand.
-- **GitHub Pages (manual trigger)** — `.github/workflows/deploy-pages.yml` publishes to
-  `https://<owner>.github.io/plan-flow-tree/`. Run it from the Actions tab. Note: on a
-  free GitHub plan Pages requires the repository to be public.
+- **GitHub Pages (automated)** — `.github/workflows/deploy-pages.yml` publishes to
+  `https://<owner>.github.io/plan-flow-tree/` on every push to `main` (or manually from
+  the Actions tab). One-time setup: Settings → Pages → "Build and deployment" → Source:
+  **GitHub Actions**. Note: on a free GitHub plan Pages requires a public repository.
 
 ## Stack
 
