@@ -1,0 +1,230 @@
+import type { Dependency, ID, ItemType, PlanItem, Project } from "./types";
+import { ITEM_TYPES, TYPE_LABEL, TYPE_RANK } from "./types";
+
+export function itemMap(items: PlanItem[]): Map<ID, PlanItem> {
+  return new Map(items.map((i) => [i.id, i]));
+}
+
+/** Children grouped by parent id (null = root), sorted by sibling order. */
+export function childrenMap(items: PlanItem[]): Map<ID | null, PlanItem[]> {
+  const map = new Map<ID | null, PlanItem[]>();
+  for (const item of items) {
+    const list = map.get(item.parentId) ?? [];
+    list.push(item);
+    map.set(item.parentId, list);
+  }
+  for (const list of map.values()) list.sort((a, b) => a.order - b.order);
+  return map;
+}
+
+export function canParent(parent: ItemType, child: ItemType): boolean {
+  return TYPE_RANK[parent] < TYPE_RANK[child];
+}
+
+/** Item types that may be created under the given parent (null = root). */
+export function allowedChildTypes(parent: ItemType | null): ItemType[] {
+  if (parent === null) return [...ITEM_TYPES];
+  return ITEM_TYPES.filter((t) => canParent(parent, t));
+}
+
+/**
+ * Recompute container completion bottom-up: an item with children is done
+ * exactly when all of its children are done. Leaves keep their manual state.
+ * Mutates and returns `items`.
+ */
+export function rollUpDone(items: PlanItem[]): PlanItem[] {
+  const children = childrenMap(items);
+  const visit = (item: PlanItem): boolean => {
+    const kids = children.get(item.id) ?? [];
+    if (kids.length > 0) {
+      // No `every` here: every child must be visited so its own derived
+      // state refreshes, even after one already came back unfinished.
+      let allDone = true;
+      for (const kid of kids) allDone = visit(kid) && allDone;
+      item.done = allDone;
+    }
+    return item.done;
+  };
+  for (const root of children.get(null) ?? []) visit(root);
+  return items;
+}
+
+export interface BlockInfo {
+  /** Unmet prerequisites from this item's own incoming dependencies. */
+  unmet: ID[];
+  /** Blocked directly or via any ancestor. */
+  blocked: boolean;
+}
+
+/**
+ * An item is blocked while any of its dependencies is unfinished, or while
+ * any of its ancestors is blocked (a task inside a blocked phase cannot be
+ * worked on either).
+ */
+export function computeBlocked(items: PlanItem[], deps: Dependency[]): Map<ID, BlockInfo> {
+  const byId = itemMap(items);
+  const incoming = new Map<ID, ID[]>();
+  for (const dep of deps) {
+    const list = incoming.get(dep.target) ?? [];
+    list.push(dep.source);
+    incoming.set(dep.target, list);
+  }
+
+  const result = new Map<ID, BlockInfo>();
+  const visit = (id: ID, stack: Set<ID>): BlockInfo => {
+    const cached = result.get(id);
+    if (cached) return cached;
+    // Guard against malformed parent cycles so we never recurse forever.
+    if (stack.has(id)) return { unmet: [], blocked: false };
+    stack.add(id);
+
+    const item = byId.get(id)!;
+    const unmet = (incoming.get(id) ?? []).filter((src) => !(byId.get(src)?.done ?? true));
+    const parentBlocked = item.parentId ? visit(item.parentId, stack).blocked : false;
+    const info: BlockInfo = { unmet, blocked: unmet.length > 0 || parentBlocked };
+    result.set(id, info);
+    stack.delete(id);
+    return info;
+  };
+  for (const item of items) visit(item.id, new Set());
+  return result;
+}
+
+/**
+ * Every unfinished prerequisite that keeps `id` from being worked on,
+ * including those inherited from ancestors. For inspector display.
+ */
+export function blockingSources(items: PlanItem[], deps: Dependency[], id: ID): PlanItem[] {
+  const byId = itemMap(items);
+  const blockInfo = computeBlocked(items, deps);
+  const sources: PlanItem[] = [];
+  const seen = new Set<ID>();
+  let current: PlanItem | undefined = byId.get(id);
+  while (current) {
+    for (const src of blockInfo.get(current.id)?.unmet ?? []) {
+      if (!seen.has(src)) {
+        seen.add(src);
+        const item = byId.get(src);
+        if (item) sources.push(item);
+      }
+    }
+    current = current.parentId ? byId.get(current.parentId) : undefined;
+  }
+  return sources;
+}
+
+/**
+ * Validate adding the dependency `source → target`. Returns an error message
+ * or null when the edge is fine.
+ *
+ * Deadlock detection uses the combined "must finish before" graph:
+ *   - dependency s → t: s must finish before t
+ *   - hierarchy child → parent: a parent is done only when all children are
+ * Adding s → t is rejected if t can already reach s in that graph — e.g. a
+ * dependency from an item onto its own descendant's container, or any cycle
+ * of dependencies threaded through the hierarchy.
+ */
+export function validateDep(
+  items: PlanItem[],
+  deps: Dependency[],
+  source: ID,
+  target: ID,
+): string | null {
+  if (source === target) return "An item cannot depend on itself.";
+  const byId = itemMap(items);
+  if (!byId.has(source) || !byId.has(target)) return "Unknown item.";
+  if (deps.some((d) => d.source === source && d.target === target))
+    return "That dependency already exists.";
+
+  const adjacency = new Map<ID, ID[]>();
+  const addEdge = (from: ID, to: ID) => {
+    const list = adjacency.get(from) ?? [];
+    list.push(to);
+    adjacency.set(from, list);
+  };
+  for (const dep of deps) addEdge(dep.source, dep.target);
+  for (const item of items) if (item.parentId) addEdge(item.id, item.parentId);
+
+  const stack = [target];
+  const seen = new Set<ID>();
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (node === source) {
+      const s = byId.get(source)!;
+      const t = byId.get(target)!;
+      return `“${t.title}” already needs to finish before “${s.title}” — that would deadlock.`;
+    }
+    if (seen.has(node)) continue;
+    seen.add(node);
+    for (const next of adjacency.get(node) ?? []) stack.push(next);
+  }
+  return null;
+}
+
+export interface Progress {
+  done: number;
+  total: number;
+}
+
+/** Per-item leaf progress (done leaves / total leaves in the subtree). */
+export function computeProgress(items: PlanItem[]): Map<ID, Progress> {
+  const children = childrenMap(items);
+  const result = new Map<ID, Progress>();
+  const visit = (item: PlanItem): Progress => {
+    const kids = children.get(item.id) ?? [];
+    if (kids.length === 0) {
+      const p = { done: item.done ? 1 : 0, total: 1 };
+      result.set(item.id, p);
+      return p;
+    }
+    const p: Progress = { done: 0, total: 0 };
+    for (const kid of kids) {
+      const kp = visit(kid);
+      p.done += kp.done;
+      p.total += kp.total;
+    }
+    result.set(item.id, p);
+    return p;
+  };
+  for (const root of children.get(null) ?? []) visit(root);
+  return result;
+}
+
+export function projectProgress(project: Project): Progress {
+  const perItem = computeProgress(project.items);
+  const children = childrenMap(project.items);
+  const total: Progress = { done: 0, total: 0 };
+  for (const root of children.get(null) ?? []) {
+    const p = perItem.get(root.id);
+    if (p) {
+      total.done += p.done;
+      total.total += p.total;
+    }
+  }
+  return total;
+}
+
+/** The item ids of `id` plus all of its descendants. */
+export function subtreeIds(items: PlanItem[], id: ID): Set<ID> {
+  const children = childrenMap(items);
+  const ids = new Set<ID>();
+  const stack = [id];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    if (ids.has(current)) continue;
+    ids.add(current);
+    for (const kid of children.get(current) ?? []) stack.push(kid.id);
+  }
+  return ids;
+}
+
+export function describeDep(items: PlanItem[], dep: Dependency): string {
+  const byId = itemMap(items);
+  const s = byId.get(dep.source);
+  const t = byId.get(dep.target);
+  return `“${s?.title ?? "?"}” must finish before “${t?.title ?? "?"}”`;
+}
+
+export function typeLabel(type: ItemType): string {
+  return TYPE_LABEL[type];
+}
