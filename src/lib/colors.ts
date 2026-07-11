@@ -21,3 +21,5 @@ export const COLOR_HEX: Record<ColorKey, string> = {
 export const EDGE_SATISFIED = "#94a3b8";
 /** Dependency edge still waiting on its prerequisite. */
 export const EDGE_PENDING = "#f59e0b";
+/** Branch connector from a deep parent task to its subtasks. */
+export const EDGE_TREE = "#cbd5e1";

@@ -28,7 +28,7 @@ import {
   projectProgress,
 } from "@/lib/logic";
 import { insertTargetAt, layoutProject } from "@/lib/layout";
-import { COLOR_HEX, EDGE_PENDING, EDGE_SATISFIED } from "@/lib/colors";
+import { COLOR_HEX, EDGE_PENDING, EDGE_SATISFIED, EDGE_TREE } from "@/lib/colors";
 import { addDep, addItem, deleteDep, renameProject, useAppState } from "@/lib/store";
 import { navigate } from "@/lib/router";
 import { nodeTypes, TYPE_ICON, type PlanNodeData } from "./nodes";
@@ -111,6 +111,7 @@ function PlannerInner({ project }: { project: Project }) {
 
   const openEdgeMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
     event.preventDefault();
+    if (edge.id.startsWith("tree-")) return; // branch connectors are not editable
     setMenu({ kind: "edge", x: event.clientX, y: event.clientY, depId: edge.id });
   }, []);
 
@@ -128,19 +129,21 @@ function PlannerInner({ project }: { project: Project }) {
     const ordered = [...project.items].sort((a, b) => depthOf(a.id) - depthOf(b.id));
     return ordered.map((item) => {
       const rect = layout.rects.get(item.id) ?? { x: 0, y: 0, w: 240, h: 46 };
-      const parentRect = item.parentId ? layout.rects.get(item.parentId) : null;
+      const container = layout.containerOf.get(item.id) ?? null;
+      const containerRect = container ? layout.rects.get(container) : null;
       const isLeaf = (children.get(item.id) ?? []).length === 0;
-      const isContainer = item.type === "group" || !isLeaf;
+      const isContainer = layout.containers.has(item.id);
       const dimmed = visible !== null && !visible.has(item.id);
       return {
         id: item.id,
         type: item.type,
-        position: parentRect
-          ? { x: rect.x - parentRect.x, y: rect.y - parentRect.y }
+        position: containerRect
+          ? { x: rect.x - containerRect.x, y: rect.y - containerRect.y }
           : { x: rect.x, y: rect.y },
-        parentNode: item.parentId ?? undefined,
+        parentNode: container ?? undefined,
         style: { width: rect.w, height: rect.h },
-        zIndex: depthOf(item.id) * 2,
+        // Tiers: group boxes (0) → task boxes (1) → branch edges (2) → cards (3).
+        zIndex: isContainer ? (item.type === "group" ? 0 : 1) : 3,
         className: `${isContainer ? "pf-pass" : ""} ${dimmed ? "pf-dim" : ""}`,
         draggable: false,
         selected: selection?.kind === "item" && selection.id === item.id,
@@ -148,6 +151,7 @@ function PlannerInner({ project }: { project: Project }) {
           projectId: project.id,
           item,
           isLeaf,
+          isContainer,
           blocked: blocked.get(item.id)?.blocked ?? false,
           progress: isLeaf ? null : (progress.get(item.id) ?? null),
           childTypes: allowedChildTypes(item.type),
@@ -169,34 +173,54 @@ function PlannerInner({ project }: { project: Project }) {
     handleAddChild,
   ]);
 
-  // Hierarchy is containment; the only edges on the canvas are dependencies.
-  const edges = useMemo<Edge[]>(
-    () =>
-      project.deps.map((dep) => {
-        const satisfied = byId.get(dep.source)?.done ?? false;
-        const color = satisfied ? EDGE_SATISFIED : EDGE_PENDING;
-        const dimmed = visible !== null && (!visible.has(dep.source) || !visible.has(dep.target));
-        return {
-          id: dep.id,
-          source: dep.source,
-          sourceHandle: "out",
-          target: dep.target,
-          targetHandle: "in",
-          type: "default",
-          selected: selection?.kind === "dep" && selection.id === dep.id,
-          markerEnd: { type: MarkerType.ArrowClosed, color, width: 15, height: 15 },
-          style: {
-            stroke: color,
-            strokeWidth: 1.8,
-            strokeDasharray: satisfied ? undefined : "6 4",
-            opacity: dimmed ? 0.08 : 1,
-          },
-          interactionWidth: 14,
-          zIndex: 1000,
-        };
-      }),
-    [project.deps, byId, selection, visible],
-  );
+  // Boxes show containment directly; deep parent tasks connect to their
+  // subtasks with branch lines. Dependencies are the arrows.
+  const edges = useMemo<Edge[]>(() => {
+    const treeEdges: Edge[] = [];
+    for (const item of project.items) {
+      if (!item.parentId) continue;
+      const parent = byId.get(item.parentId);
+      if (!parent || layout.containers.has(parent.id)) continue; // boxes wrap visually
+      const dimmed = visible !== null && !visible.has(item.id);
+      treeEdges.push({
+        id: `tree-${item.id}`,
+        source: parent.id,
+        sourceHandle: "tree",
+        target: item.id,
+        targetHandle: "in",
+        type: "smoothstep",
+        pathOptions: { borderRadius: 8 },
+        style: { stroke: EDGE_TREE, strokeWidth: 1.6, opacity: dimmed ? 0.08 : 1 },
+        selectable: false,
+        focusable: false,
+        zIndex: 2,
+      } as Edge);
+    }
+    const depEdges = project.deps.map((dep) => {
+      const satisfied = byId.get(dep.source)?.done ?? false;
+      const color = satisfied ? EDGE_SATISFIED : EDGE_PENDING;
+      const dimmed = visible !== null && (!visible.has(dep.source) || !visible.has(dep.target));
+      return {
+        id: dep.id,
+        source: dep.source,
+        sourceHandle: "out",
+        target: dep.target,
+        targetHandle: "in",
+        type: "default",
+        selected: selection?.kind === "dep" && selection.id === dep.id,
+        markerEnd: { type: MarkerType.ArrowClosed, color, width: 15, height: 15 },
+        style: {
+          stroke: color,
+          strokeWidth: 1.8,
+          strokeDasharray: satisfied ? undefined : "6 4",
+          opacity: dimmed ? 0.08 : 1,
+        },
+        interactionWidth: 14,
+        zIndex: 1000,
+      };
+    });
+    return [...treeEdges, ...depEdges];
+  }, [project.items, project.deps, byId, layout.containers, selection, visible]);
 
   // Nodes/edges are fully derived from the store; the only changes we accept
   // back from React Flow are selection updates.

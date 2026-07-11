@@ -104,6 +104,10 @@ export function createDemoState(now: number): AppState {
                 type: "task",
                 title: "Core component set",
                 description: "Buttons, forms, cards, navigation.",
+                children: [
+                  { type: "task", title: "Buttons & inputs", done: true },
+                  { type: "task", title: "Cards & navigation" },
+                ],
               },
               { type: "task", title: "Usage documentation" },
             ],

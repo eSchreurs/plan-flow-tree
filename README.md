@@ -10,13 +10,15 @@ are seeded on first launch.
 
 Two concepts, kept deliberately separate:
 
-- **Hierarchy is vertical containment.** A _Group_ is a top-level container. Inside it,
-  everything is a _Task_, and any task can hold unlimited child tasks — a task with
-  children becomes a parent/header whose subtasks live underneath it, indented, inside
-  the same visual box. Tasks can also live directly at the root.
+- **Hierarchy is vertical.** A _Group_ is a top-level container. Inside it, everything
+  is a _Task_, and any task can hold unlimited child tasks. A top-level parent task
+  wraps its subtree in a box; deeper parents stay plain cards with their subtasks
+  hanging underneath, indented and connected by light branch lines — so deep nesting
+  never turns into boxes-in-boxes. Tasks can also live directly at the root.
 - **Flow is horizontal dependencies.** Drag from an item's right dot to another item to
   say "this must finish first". When B depends on A, B is placed in a column to the
-  right of A and connected with a directional arrow — at every nesting level.
+  right of A, **vertically centered on A** (on the average center when it depends on
+  several items), and connected with a directional arrow — at every nesting level.
 
 Plus **tags**: simple colored labels (not containers) used purely for filtering and
 search.
