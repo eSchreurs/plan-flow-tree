@@ -14,25 +14,27 @@ import ReactFlow, {
   type NodeChange,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { ArrowLeft, X } from "lucide-react";
+import { ArrowLeft, PanelLeft, Search, X } from "lucide-react";
 import type { ID, ItemType, Project } from "@/lib/types";
-import { ITEM_TYPES, TYPE_LABEL } from "@/lib/types";
+import { TYPE_LABEL } from "@/lib/types";
 import {
   allowedChildTypes,
   canParent,
   childrenMap,
   computeBlocked,
   computeProgress,
+  filterVisible,
   itemMap,
   projectProgress,
 } from "@/lib/logic";
 import { insertTargetAt, layoutProject } from "@/lib/layout";
-import { COLOR_HEX, EDGE_PENDING, EDGE_SATISFIED, EDGE_TREE } from "@/lib/colors";
+import { COLOR_HEX, EDGE_PENDING, EDGE_SATISFIED } from "@/lib/colors";
 import { addDep, addItem, deleteDep, renameProject, useAppState } from "@/lib/store";
 import { navigate } from "@/lib/router";
 import { nodeTypes, TYPE_ICON, type PlanNodeData } from "./nodes";
 import { Inspector, type Selection } from "./Inspector";
 import { ContextMenu, type MenuState } from "./ContextMenu";
+import { TreeDrawer } from "./TreeDrawer";
 import { toast } from "../Toast";
 
 export function PlannerPage({ projectId }: { projectId: ID }) {
@@ -55,6 +57,9 @@ function PlannerInner({ project }: { project: Project }) {
   const [selection, setSelection] = useState<Selection>(null);
   const [justAdded, setJustAdded] = useState<ID | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(true);
+  const [query, setQuery] = useState("");
+  const [activeTags, setActiveTags] = useState<Set<ID>>(new Set());
   const canvasRef = useRef<HTMLDivElement>(null);
   const reactFlow = useReactFlow();
 
@@ -68,6 +73,10 @@ function PlannerInner({ project }: { project: Project }) {
   const layout = useMemo(
     () => layoutProject(project.items, project.deps),
     [project.items, project.deps],
+  );
+  const visible = useMemo(
+    () => filterVisible(project.items, query, activeTags),
+    [project.items, query, activeTags],
   );
 
   const handleAddChild = useCallback(
@@ -102,28 +111,37 @@ function PlannerInner({ project }: { project: Project }) {
 
   const openEdgeMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
     event.preventDefault();
-    if (edge.id.startsWith("tree-")) return; // hierarchy connectors are not editable
     setMenu({ kind: "edge", x: event.clientX, y: event.clientY, depId: edge.id });
   }, []);
 
   const nodes = useMemo<Node<PlanNodeData>[]>(() => {
-    const ordered = [...project.items].sort(
-      (a, b) => (a.type === "category" ? 0 : 1) - (b.type === "category" ? 0 : 1),
-    );
+    // React Flow requires parents to appear before their children.
+    const depthOf = (id: ID): number => {
+      let depth = 0;
+      let current = byId.get(id);
+      while (current?.parentId) {
+        depth++;
+        current = byId.get(current.parentId);
+      }
+      return depth;
+    };
+    const ordered = [...project.items].sort((a, b) => depthOf(a.id) - depthOf(b.id));
     return ordered.map((item) => {
       const rect = layout.rects.get(item.id) ?? { x: 0, y: 0, w: 240, h: 46 };
-      const container = layout.containerOf.get(item.id) ?? null;
-      const containerRect = container ? layout.rects.get(container) : null;
+      const parentRect = item.parentId ? layout.rects.get(item.parentId) : null;
       const isLeaf = (children.get(item.id) ?? []).length === 0;
+      const isContainer = item.type === "group" || !isLeaf;
+      const dimmed = visible !== null && !visible.has(item.id);
       return {
         id: item.id,
         type: item.type,
-        position: containerRect
-          ? { x: rect.x - containerRect.x, y: rect.y - containerRect.y }
+        position: parentRect
+          ? { x: rect.x - parentRect.x, y: rect.y - parentRect.y }
           : { x: rect.x, y: rect.y },
-        parentNode: container ?? undefined,
+        parentNode: item.parentId ?? undefined,
         style: { width: rect.w, height: rect.h },
-        zIndex: item.type === "category" ? 0 : 2,
+        zIndex: depthOf(item.id) * 2,
+        className: `${isContainer ? "pf-pass" : ""} ${dimmed ? "pf-dim" : ""}`,
         draggable: false,
         selected: selection?.kind === "item" && selection.id === item.id,
         data: {
@@ -138,51 +156,47 @@ function PlannerInner({ project }: { project: Project }) {
         },
       };
     });
-  }, [project, layout, children, blocked, progress, selection, justAdded, handleAddChild]);
+  }, [
+    project,
+    layout,
+    children,
+    blocked,
+    progress,
+    selection,
+    justAdded,
+    visible,
+    byId,
+    handleAddChild,
+  ]);
 
-  const edges = useMemo<Edge[]>(() => {
-    const treeEdges: Edge[] = [];
-    for (const item of project.items) {
-      if (!item.parentId) continue;
-      const parent = byId.get(item.parentId);
-      if (!parent || parent.type === "category") continue; // containment is visual
-      treeEdges.push({
-        id: `tree-${item.id}`,
-        source: parent.id,
-        sourceHandle: "tree",
-        target: item.id,
-        targetHandle: "in",
-        type: "smoothstep",
-        pathOptions: { borderRadius: 10 },
-        style: { stroke: EDGE_TREE, strokeWidth: 1.6 },
-        selectable: false,
-        focusable: false,
-        zIndex: 1,
-      } as Edge);
-    }
-    const depEdges = project.deps.map((dep) => {
-      const satisfied = byId.get(dep.source)?.done ?? false;
-      const color = satisfied ? EDGE_SATISFIED : EDGE_PENDING;
-      return {
-        id: dep.id,
-        source: dep.source,
-        sourceHandle: "out",
-        target: dep.target,
-        targetHandle: "in",
-        type: "default",
-        selected: selection?.kind === "dep" && selection.id === dep.id,
-        markerEnd: { type: MarkerType.ArrowClosed, color, width: 15, height: 15 },
-        style: {
-          stroke: color,
-          strokeWidth: 1.8,
-          strokeDasharray: satisfied ? undefined : "6 4",
-        },
-        interactionWidth: 14,
-        zIndex: 1,
-      };
-    });
-    return [...treeEdges, ...depEdges];
-  }, [project.items, project.deps, byId, selection]);
+  // Hierarchy is containment; the only edges on the canvas are dependencies.
+  const edges = useMemo<Edge[]>(
+    () =>
+      project.deps.map((dep) => {
+        const satisfied = byId.get(dep.source)?.done ?? false;
+        const color = satisfied ? EDGE_SATISFIED : EDGE_PENDING;
+        const dimmed = visible !== null && (!visible.has(dep.source) || !visible.has(dep.target));
+        return {
+          id: dep.id,
+          source: dep.source,
+          sourceHandle: "out",
+          target: dep.target,
+          targetHandle: "in",
+          type: "default",
+          selected: selection?.kind === "dep" && selection.id === dep.id,
+          markerEnd: { type: MarkerType.ArrowClosed, color, width: 15, height: 15 },
+          style: {
+            stroke: color,
+            strokeWidth: 1.8,
+            strokeDasharray: satisfied ? undefined : "6 4",
+            opacity: dimmed ? 0.08 : 1,
+          },
+          interactionWidth: 14,
+          zIndex: 1000,
+        };
+      }),
+    [project.deps, byId, selection, visible],
+  );
 
   // Nodes/edges are fully derived from the store; the only changes we accept
   // back from React Flow are selection updates.
@@ -240,6 +254,18 @@ function PlannerInner({ project }: { project: Project }) {
     return () => window.removeEventListener("keydown", handler);
   }, [selection, menu, project.id]);
 
+  const centerOnItem = useCallback(
+    (id: ID, duration = 300) => {
+      const rect = layout.rects.get(id);
+      if (!rect) return;
+      reactFlow.setCenter(rect.x + rect.w / 2, rect.y + rect.h / 2, {
+        zoom: reactFlow.getViewport().zoom,
+        duration,
+      });
+    },
+    [layout, reactFlow],
+  );
+
   // Pan to a freshly added node when it lands outside the current viewport.
   useEffect(() => {
     if (!justAdded) return;
@@ -251,12 +277,10 @@ function PlannerInner({ project }: { project: Project }) {
     const cy = (rect.y + rect.h / 2) * zoom + y;
     const bounds = container.getBoundingClientRect();
     const margin = 40;
-    const visible =
+    const inView =
       cx > margin && cy > margin && cx < bounds.width - margin && cy < bounds.height - margin;
-    if (!visible) {
-      reactFlow.setCenter(rect.x + rect.w / 2, rect.y + rect.h / 2, { zoom, duration: 350 });
-    }
-  }, [justAdded, layout, reactFlow]);
+    if (!inView) centerOnItem(justAdded, 350);
+  }, [justAdded, layout, reactFlow, centerOnItem]);
 
   /** Where a toolbar-add of `type` would land, based on the selection. */
   const resolveParent = (type: ItemType): ID | null => {
@@ -269,12 +293,22 @@ function PlannerInner({ project }: { project: Project }) {
     return null;
   };
 
+  const toggleTag = (tagId: ID) => {
+    setActiveTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tagId)) next.delete(tagId);
+      else next.add(tagId);
+      return next;
+    });
+  };
+
   const selectedItem = selection?.kind === "item" ? byId.get(selection.id) : undefined;
   const totals = projectProgress(project);
+  const filterActive = visible !== null;
 
   return (
     <div className="flex h-screen flex-col bg-slate-50">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-4">
         <a
           href="#/"
           className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
@@ -282,6 +316,17 @@ function PlannerInner({ project }: { project: Project }) {
         >
           <ArrowLeft size={16} />
         </a>
+        <button
+          type="button"
+          onClick={() => setDrawerOpen((o) => !o)}
+          className={`flex h-7 w-7 items-center justify-center rounded-md hover:bg-slate-100 ${
+            drawerOpen ? "text-blue-600" : "text-slate-500"
+          }`}
+          aria-label="Toggle tree drawer"
+          data-testid="drawer-toggle"
+        >
+          <PanelLeft size={16} />
+        </button>
         <input
           className="w-64 rounded-md px-2 py-1 text-[15px] font-semibold text-slate-800 outline-none hover:bg-slate-100 focus:bg-slate-100"
           value={project.name}
@@ -299,9 +344,9 @@ function PlannerInner({ project }: { project: Project }) {
         <span className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
           Add
         </span>
-        {ITEM_TYPES.map((type) => {
+        {(["group", "task"] as ItemType[]).map((type) => {
           const Icon = TYPE_ICON[type];
-          const parent = resolveParent(type);
+          const parent = type === "task" ? resolveParent(type) : null;
           const parentTitle = parent ? byId.get(parent)?.title : null;
           return (
             <button
@@ -333,12 +378,91 @@ function PlannerInner({ project }: { project: Project }) {
             </button>
           </span>
         )}
-        <span className="ml-auto hidden text-[11.5px] text-slate-400 md:block">
-          Right-click anywhere to add or edit · drag from a right dot to link a dependency
+
+        <div className="mx-2 h-5 w-px bg-slate-200" />
+
+        <div className="relative">
+          <Search size={13} className="absolute top-1/2 left-2 -translate-y-1/2 text-slate-400" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search…"
+            className="w-44 rounded-lg border border-slate-200 py-1.5 pr-6 pl-7 text-[12px] outline-none focus:border-blue-400"
+            aria-label="Search tasks"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:bg-slate-100"
+              aria-label="Clear search"
+            >
+              <X size={11} />
+            </button>
+          )}
+        </div>
+
+        <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
+          {project.tags.map((tag) => {
+            const active = activeTags.has(tag.id);
+            return (
+              <button
+                key={tag.id}
+                type="button"
+                onClick={() => toggleTag(tag.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setMenu({ kind: "tag", x: e.clientX, y: e.clientY, tagId: tag.id });
+                }}
+                title={`Filter by “${tag.name}” · right-click to delete the tag`}
+                className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition-colors ${
+                  active ? "text-white" : "bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+                style={
+                  active
+                    ? { background: COLOR_HEX[tag.color], borderColor: COLOR_HEX[tag.color] }
+                    : { borderColor: "#e2e8f0" }
+                }
+              >
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: active ? "#fff" : COLOR_HEX[tag.color] }}
+                />
+                {tag.name}
+              </button>
+            );
+          })}
+          {filterActive && (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("");
+                setActiveTags(new Set());
+              }}
+              className="shrink-0 text-[11.5px] text-blue-600 hover:underline"
+            >
+              Clear filter
+            </button>
+          )}
+        </div>
+
+        <span className="ml-auto hidden shrink-0 text-[11.5px] text-slate-400 xl:block">
+          Right-click anywhere to add or edit
         </span>
       </div>
 
       <div className="flex min-h-0 flex-1">
+        {drawerOpen && (
+          <TreeDrawer
+            project={project}
+            selectedId={selection?.kind === "item" ? selection.id : null}
+            visible={visible}
+            onSelect={(id) => {
+              setSelection({ kind: "item", id });
+              centerOnItem(id);
+            }}
+          />
+        )}
         <div ref={canvasRef} className="relative min-w-0 flex-1">
           <ReactFlow
             nodes={nodes}
@@ -376,7 +500,8 @@ function PlannerInner({ project }: { project: Project }) {
           {project.items.length === 0 && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <div className="rounded-xl border border-dashed border-slate-300 bg-white/80 px-6 py-4 text-center text-[13px] text-slate-500">
-                Empty project — add a category, phase or task with the buttons above.
+                Empty project — right-click the canvas or use the buttons above to add a group or
+                task.
               </div>
             </div>
           )}

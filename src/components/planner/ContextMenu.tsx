@@ -11,9 +11,9 @@ import {
   Unlink,
 } from "lucide-react";
 import type { ID, ItemType, Project } from "@/lib/types";
-import { ITEM_TYPES, TYPE_LABEL } from "@/lib/types";
+import { TYPE_LABEL } from "@/lib/types";
 import { allowedChildTypes, childrenMap, computeBlocked, subtreeIds } from "@/lib/logic";
-import { deleteDep, deleteItem, duplicateItem, toggleDone } from "@/lib/store";
+import { deleteDep, deleteItem, deleteTag, duplicateItem, toggleDone } from "@/lib/store";
 import { TYPE_ICON } from "./nodes";
 import type { Selection } from "./Inspector";
 import { toast } from "../Toast";
@@ -21,7 +21,8 @@ import { toast } from "../Toast";
 export type MenuState =
   | { kind: "pane"; x: number; y: number; parentId: ID | null; order: number; between: boolean }
   | { kind: "node"; x: number; y: number; itemId: ID }
-  | { kind: "edge"; x: number; y: number; depId: ID };
+  | { kind: "edge"; x: number; y: number; depId: ID }
+  | { kind: "tag"; x: number; y: number; tagId: ID };
 
 interface Entry {
   key: string;
@@ -42,18 +43,24 @@ interface ContextMenuProps {
   onClose: () => void;
 }
 
+/** What a task is called depends on where it goes. */
+function childNoun(scopeType: ItemType | null, childType: ItemType): string {
+  if (childType === "task" && scopeType === "task") return "subtask";
+  return TYPE_LABEL[childType].toLowerCase();
+}
+
 /** Add-entries for a scope, most granular type first (tasks are the common case). */
 function addEntries(
   scopeType: ItemType | null,
   verb: string,
   add: (type: ItemType) => void,
 ): Entry[] {
-  const types = scopeType ? allowedChildTypes(scopeType) : [...ITEM_TYPES];
+  const types = allowedChildTypes(scopeType);
   return [...types].reverse().map((type, index) => {
     const Icon = TYPE_ICON[type];
     return {
       key: `add-${type}`,
-      label: `${verb} ${TYPE_LABEL[type].toLowerCase()}`,
+      label: `${verb} ${childNoun(scopeType, type)}`,
       icon: <Icon size={14} />,
       action: () => add(type),
       primary: index === 0,
@@ -135,7 +142,6 @@ export function ContextMenu({ menu, project, onAdd, onSelect, onClose }: Context
           onAdd(item.parentId, item.type, after ? (item.order + after.order) / 2 : item.order + 1);
           onClose();
         },
-        primary: inside.length === 0,
       },
     ]);
 
@@ -214,6 +220,26 @@ export function ContextMenu({ menu, project, onAdd, onSelect, onClose }: Context
         action: () => {
           deleteDep(project.id, dep.id);
           onSelect(null);
+          onClose();
+        },
+      },
+    ]);
+  }
+
+  if (menu.kind === "tag") {
+    const tag = project.tags.find((t) => t.id === menu.tagId);
+    if (!tag) return null;
+    title = `Tag: ${tag.name}`;
+    groups.push([
+      {
+        key: "delete-tag",
+        label: "Delete tag",
+        icon: <Trash2 size={14} />,
+        danger: true,
+        primary: true,
+        action: () => {
+          deleteTag(project.id, tag.id);
+          toast(`Deleted tag “${tag.name}”.`);
           onClose();
         },
       },

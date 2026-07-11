@@ -1,24 +1,10 @@
 export type ID = string;
 
-export const ITEM_TYPES = ["category", "requirement", "phase", "task"] as const;
+export const ITEM_TYPES = ["group", "task"] as const;
 export type ItemType = (typeof ITEM_TYPES)[number];
 
-/**
- * Hierarchy rank. A parent's rank must be strictly lower than its child's,
- * but layers may be skipped (e.g. tasks directly under a category) and any
- * type may live at the root: Category ⊃ Requirement ⊃ Phase ⊃ Task.
- */
-export const TYPE_RANK: Record<ItemType, number> = {
-  category: 0,
-  requirement: 1,
-  phase: 2,
-  task: 3,
-};
-
 export const TYPE_LABEL: Record<ItemType, string> = {
-  category: "Category",
-  requirement: "Requirement",
-  phase: "Phase",
+  group: "Group",
   task: "Task",
 };
 
@@ -35,20 +21,35 @@ export const COLOR_KEYS = [
 ] as const;
 export type ColorKey = (typeof COLOR_KEYS)[number];
 
+/** Colored label used purely for filtering and search — never a container. */
+export interface Tag {
+  id: ID;
+  name: string;
+  color: ColorKey;
+}
+
+/**
+ * The whole model is Group ⊃ Task*: groups are top-level containers, and any
+ * task can hold unlimited child tasks (a task with children acts as a
+ * parent/header). Tasks may also live directly at the root.
+ */
 export interface PlanItem {
   id: ID;
   type: ItemType;
+  /** Groups are always root (null). Tasks: group id, task id, or null (root). */
   parentId: ID | null;
   title: string;
   description: string;
   color: ColorKey;
   /**
    * Completion. Manually toggled on leaves (items without children);
-   * recomputed from children for containers on every mutation.
+   * recomputed from children for parents on every mutation.
    */
   done: boolean;
-  /** Sibling sort order (insertion order). */
+  /** Sibling sort order (fractional values slot between neighbours). */
   order: number;
+  /** Tags for filtering/search. */
+  tagIds: ID[];
 }
 
 export interface Dependency {
@@ -64,6 +65,7 @@ export interface Project {
   name: string;
   items: PlanItem[];
   deps: Dependency[];
+  tags: Tag[];
   createdAt: number;
   updatedAt: number;
 }

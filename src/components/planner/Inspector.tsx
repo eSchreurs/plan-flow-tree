@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, Trash2, X } from "lucide-react";
+import { ArrowRight, Plus, Trash2, X } from "lucide-react";
 import type { ID, ItemType, Project } from "@/lib/types";
 import { COLOR_KEYS, TYPE_LABEL } from "@/lib/types";
 import {
@@ -10,7 +10,7 @@ import {
   itemMap,
 } from "@/lib/logic";
 import { COLOR_HEX } from "@/lib/colors";
-import { deleteDep, deleteItem, updateItem } from "@/lib/store";
+import { addTag, deleteDep, deleteItem, toggleItemTag, updateItem } from "@/lib/store";
 import { TYPE_ICON } from "./nodes";
 
 export type Selection = { kind: "item" | "dep"; id: ID } | null;
@@ -90,6 +90,7 @@ function ItemPanel({
   onAddChild: (parentId: ID, type: ItemType) => void;
   onSelect: (selection: Selection) => void;
 }) {
+  const [newTag, setNewTag] = useState("");
   const byId = itemMap(project.items);
   const item = byId.get(itemId);
   if (!item) return null;
@@ -101,6 +102,15 @@ function ItemPanel({
   const incoming = project.deps.filter((d) => d.target === item.id);
   const outgoing = project.deps.filter((d) => d.source === item.id);
   const Icon = TYPE_ICON[item.type];
+
+  const createTag = () => {
+    const name = newTag.trim();
+    if (!name) return;
+    const existing = project.tags.find((t) => t.name.toLowerCase() === name.toLowerCase());
+    const tagId = existing ? existing.id : addTag(project.id, name);
+    if (!item.tagIds.includes(tagId)) toggleItemTag(project.id, item.id, tagId);
+    setNewTag("");
+  };
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -170,6 +180,55 @@ function ItemPanel({
               aria-label={`Color ${key}`}
             />
           ))}
+        </div>
+      </div>
+
+      <div>
+        <SectionLabel>Tags</SectionLabel>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {project.tags.map((tag) => {
+            const active = item.tagIds.includes(tag.id);
+            return (
+              <button
+                key={tag.id}
+                type="button"
+                onClick={() => toggleItemTag(project.id, item.id, tag.id)}
+                title={active ? "Remove tag" : "Add tag"}
+                className={`flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11.5px] font-medium ${
+                  active ? "text-white" : "bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+                style={
+                  active
+                    ? { background: COLOR_HEX[tag.color], borderColor: COLOR_HEX[tag.color] }
+                    : { borderColor: "#e2e8f0" }
+                }
+              >
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ background: active ? "#fff" : COLOR_HEX[tag.color] }}
+                />
+                {tag.name}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-1.5 flex gap-1.5">
+          <input
+            value={newTag}
+            onChange={(e) => setNewTag(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && createTag()}
+            placeholder="New tag…"
+            className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[12px] outline-none focus:border-blue-400"
+          />
+          <button
+            type="button"
+            onClick={createTag}
+            disabled={!newTag.trim()}
+            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[12px] font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+            aria-label="Create tag"
+          >
+            <Plus size={12} />
+          </button>
         </div>
       </div>
 
@@ -249,7 +308,7 @@ function ItemPanel({
                   className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] font-medium text-slate-600 hover:border-slate-300 hover:bg-slate-50"
                 >
                   <TypeIcon size={12} />
-                  {TYPE_LABEL[type]}
+                  {item.type === "task" ? "Subtask" : TYPE_LABEL[type]}
                 </button>
               );
             })}

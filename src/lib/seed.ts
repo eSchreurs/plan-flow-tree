@@ -1,4 +1,4 @@
-import type { AppState, ColorKey, ID, ItemType, PlanItem, Project } from "./types";
+import type { AppState, ColorKey, ID, ItemType, Project } from "./types";
 import { rollUpDone } from "./logic";
 
 interface SeedNode {
@@ -9,11 +9,28 @@ interface SeedNode {
   done?: boolean;
   /** Titles of earlier seed nodes this one depends on. */
   after?: string[];
+  /** Tag names (declared in SeedProjectTags). */
+  tags?: string[];
   children?: SeedNode[];
 }
 
-function buildProject(id: ID, name: string, nodes: SeedNode[], createdAt: number): Project {
-  const project: Project = { id, name, items: [], deps: [], createdAt, updatedAt: createdAt };
+function buildProject(
+  id: ID,
+  name: string,
+  tagDefs: { name: string; color: ColorKey }[],
+  nodes: SeedNode[],
+  createdAt: number,
+): Project {
+  const project: Project = {
+    id,
+    name,
+    items: [],
+    deps: [],
+    tags: tagDefs.map((tag, index) => ({ id: `${id}-t${index + 1}`, ...tag })),
+    createdAt,
+    updatedAt: createdAt,
+  };
+  const tagByName = new Map(project.tags.map((t) => [t.name, t.id]));
   const byTitle = new Map<string, ID>();
   let counter = 0;
 
@@ -28,6 +45,7 @@ function buildProject(id: ID, name: string, nodes: SeedNode[], createdAt: number
       color: node.color ?? "slate",
       done: node.done ?? false,
       order,
+      tagIds: (node.tags ?? []).flatMap((n) => (tagByName.has(n) ? [tagByName.get(n)!] : [])),
     });
     byTitle.set(node.title, itemId);
     node.children?.forEach((child, index) => add(child, itemId, index));
@@ -55,107 +73,101 @@ export function createDemoState(now: number): AppState {
     "demo-relaunch",
     "Website Relaunch",
     [
+      { name: "Foundation", color: "blue" },
+      { name: "Launch", color: "violet" },
+    ],
+    [
       {
-        type: "category",
-        title: "Foundation",
-        color: "blue",
+        type: "group",
+        title: "Design system",
+        color: "violet",
+        description: "Shared visual language for every page.",
+        tags: ["Foundation"],
         children: [
           {
-            type: "requirement",
-            title: "Design system",
-            color: "violet",
-            description: "Shared visual language for every page.",
+            type: "task",
+            title: "Audit",
+            color: "amber",
             children: [
-              {
-                type: "phase",
-                title: "Audit",
-                color: "amber",
-                children: [
-                  { type: "task", title: "Inventory existing components", done: true },
-                  { type: "task", title: "Collect brand assets", done: true },
-                ],
-              },
-              {
-                type: "phase",
-                title: "Build",
-                color: "blue",
-                after: ["Audit"],
-                children: [
-                  { type: "task", title: "Color & typography tokens", done: true },
-                  {
-                    type: "task",
-                    title: "Core component set",
-                    description: "Buttons, forms, cards, navigation.",
-                  },
-                  { type: "task", title: "Usage documentation" },
-                ],
-              },
+              { type: "task", title: "Inventory existing components", done: true },
+              { type: "task", title: "Collect brand assets", done: true },
             ],
           },
           {
-            type: "requirement",
-            title: "Infrastructure",
-            color: "teal",
+            type: "task",
+            title: "Build",
+            color: "blue",
+            after: ["Audit"],
             children: [
-              { type: "task", title: "Set up hosting", done: true },
-              { type: "task", title: "CI/CD pipeline", color: "teal" },
+              { type: "task", title: "Color & typography tokens", done: true },
+              {
+                type: "task",
+                title: "Core component set",
+                description: "Buttons, forms, cards, navigation.",
+              },
+              { type: "task", title: "Usage documentation" },
             ],
           },
         ],
       },
       {
-        type: "category",
-        title: "Launch",
-        color: "violet",
-        after: ["Foundation"],
+        type: "group",
+        title: "Infrastructure",
+        color: "teal",
+        tags: ["Foundation"],
+        children: [
+          { type: "task", title: "Set up hosting", done: true },
+          { type: "task", title: "CI/CD pipeline" },
+        ],
+      },
+      {
+        type: "group",
+        title: "Marketing site",
+        color: "pink",
+        tags: ["Launch"],
+        after: ["Design system"],
         children: [
           {
-            type: "requirement",
-            title: "Marketing site",
-            color: "pink",
-            after: ["Design system"],
+            type: "task",
+            title: "Content",
+            color: "green",
             children: [
-              {
-                type: "phase",
-                title: "Content",
-                color: "green",
-                children: [
-                  { type: "task", title: "Copywriting" },
-                  { type: "task", title: "Product screenshots" },
-                ],
-              },
-              {
-                type: "phase",
-                title: "Pages",
-                color: "blue",
-                after: ["Content"],
-                children: [
-                  { type: "task", title: "Home page", after: ["Copywriting"] },
-                  { type: "task", title: "Pricing page" },
-                  { type: "task", title: "Blog" },
-                ],
-              },
+              { type: "task", title: "Copywriting" },
+              { type: "task", title: "Product screenshots" },
             ],
           },
           {
-            type: "phase",
-            title: "QA & release",
-            color: "red",
-            after: ["Marketing site"],
-            description: "Final checks before going public.",
+            type: "task",
+            title: "Pages",
+            color: "blue",
+            after: ["Content"],
             children: [
-              { type: "task", title: "Cross-browser pass" },
-              { type: "task", title: "Performance audit" },
-              { type: "task", title: "Go live" },
+              { type: "task", title: "Home page", after: ["Copywriting"] },
+              { type: "task", title: "Pricing page" },
+              { type: "task", title: "Blog" },
             ],
           },
         ],
       },
       {
         type: "task",
+        title: "QA & release",
+        color: "red",
+        description: "Final checks before going public.",
+        tags: ["Launch"],
+        after: ["Marketing site"],
+        children: [
+          { type: "task", title: "Cross-browser pass" },
+          { type: "task", title: "Performance audit" },
+          { type: "task", title: "Go live" },
+        ],
+      },
+      {
+        type: "task",
         title: "Announce on social media",
         color: "amber",
-        after: ["Launch"],
+        tags: ["Launch"],
+        after: ["QA & release"],
       },
     ],
     now,
@@ -164,13 +176,15 @@ export function createDemoState(now: number): AppState {
   const chores = buildProject(
     "demo-chores",
     "Weekend Chores",
+    [{ name: "Outside", color: "green" }],
     [
       { type: "task", title: "Groceries", color: "green", done: true },
       { type: "task", title: "Meal prep", color: "green", after: ["Groceries"] },
       {
-        type: "phase",
+        type: "task",
         title: "Garden",
         color: "teal",
+        tags: ["Outside"],
         children: [
           { type: "task", title: "Mow the lawn" },
           { type: "task", title: "Water plants", done: true },

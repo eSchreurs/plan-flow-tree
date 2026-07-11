@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { Handle, Position, type NodeProps } from "reactflow";
-import { Check, Flag, Folder, ListTodo, Lock, Milestone, Plus } from "lucide-react";
+import { Check, Folder, ListTodo, Lock, Plus } from "lucide-react";
 import type { ID, ItemType, PlanItem } from "@/lib/types";
 import { TYPE_LABEL } from "@/lib/types";
 import type { Progress } from "@/lib/logic";
@@ -20,9 +20,7 @@ export interface PlanNodeData {
 }
 
 export const TYPE_ICON: Record<ItemType, typeof Folder> = {
-  category: Folder,
-  requirement: Flag,
-  phase: Milestone,
+  group: Folder,
   task: ListTodo,
 };
 
@@ -48,9 +46,9 @@ function TitleInput({ data }: { data: PlanNodeData }) {
 }
 
 function CheckButton({ data }: { data: PlanNodeData }) {
-  const { item, isLeaf, blocked, progress } = data;
+  const { item, isLeaf, progress } = data;
   if (!isLeaf) {
-    // Containers derive their state — show progress, or a filled check when complete.
+    // Parents derive their state — show progress, or a filled check when complete.
     if (item.done) {
       return (
         <span className="pf-check is-done is-derived" aria-label="All children done">
@@ -60,11 +58,11 @@ function CheckButton({ data }: { data: PlanNodeData }) {
     }
     return (
       <span className="pf-progress" aria-label="Progress">
-        {progress ? `${progress.done}/${progress.total}` : ""}
+        {progress ? `${progress.done}/${progress.total}` : "0/0"}
       </span>
     );
   }
-  const disabled = blocked && !item.done;
+  const disabled = data.blocked && !item.done;
   return (
     <button
       type="button"
@@ -90,7 +88,7 @@ function AddChildButton({ data }: { data: PlanNodeData }) {
       <button
         type="button"
         className="pf-add-btn"
-        title="Add child item"
+        title={data.item.type === "group" ? "Add task" : "Add subtask"}
         onClick={(e) => {
           e.stopPropagation();
           setOpen((o) => !o);
@@ -115,7 +113,7 @@ function AddChildButton({ data }: { data: PlanNodeData }) {
                   }}
                 >
                   <Icon size={13} />
-                  {TYPE_LABEL[type]}
+                  {data.item.type === "group" ? "Task" : "Subtask"}
                 </button>
               );
             })}
@@ -151,108 +149,69 @@ function DepHandles({ topOffset }: { topOffset?: number }) {
   );
 }
 
-/** Hidden anchor for parent → child tree connectors. */
-function TreeSourceHandle() {
-  return (
-    <Handle
-      type="source"
-      position={Position.Bottom}
-      id="tree"
-      className="pf-handle-hidden"
-      style={{ left: 16 }}
-    />
-  );
-}
-
 export const TaskNode = memo(function TaskNode({ data }: NodeProps<PlanNodeData>) {
-  const { item, blocked } = data;
-  const cls = [
-    "pf-node pf-task",
-    item.done ? "is-done" : "",
-    blocked && !item.done ? "is-blocked" : "",
-  ].join(" ");
-  return (
-    <div className={cls} style={{ "--item": COLOR_HEX[item.color] } as React.CSSProperties}>
-      <CheckButton data={data} />
-      <div className="pf-body">
-        <div className="pf-row">
-          <TitleInput data={data} />
-          <BlockedBadge data={data} />
-        </div>
-        {item.description.trim() && <div className="pf-desc">{item.description}</div>}
-      </div>
-      <DepHandles />
-    </div>
-  );
-});
-
-export const PhaseNode = memo(function PhaseNode({ data }: NodeProps<PlanNodeData>) {
-  const { item, blocked } = data;
-  const cls = [
-    "pf-node pf-phase",
-    item.done ? "is-done" : "",
-    blocked && !item.done ? "is-blocked" : "",
-  ].join(" ");
-  return (
-    <div className={cls} style={{ "--item": COLOR_HEX[item.color] } as React.CSSProperties}>
-      <Milestone size={14} className="pf-type-icon" />
-      <div className="pf-body">
-        <div className="pf-row">
-          <TitleInput data={data} />
-          <BlockedBadge data={data} />
-          <CheckButton data={data} />
-        </div>
-        {item.description.trim() && <div className="pf-desc">{item.description}</div>}
-      </div>
-      <AddChildButton data={data} />
-      <DepHandles />
-      <TreeSourceHandle />
-    </div>
-  );
-});
-
-export const RequirementNode = memo(function RequirementNode({ data }: NodeProps<PlanNodeData>) {
-  const { item, blocked } = data;
-  const cls = [
-    "pf-node pf-req",
-    item.done ? "is-done" : "",
-    blocked && !item.done ? "is-blocked" : "",
-  ].join(" ");
-  return (
-    <div className={cls} style={{ "--item": COLOR_HEX[item.color] } as React.CSSProperties}>
-      <Flag size={13} className="pf-type-icon" />
-      <div className="pf-body">
-        <div className="pf-row">
-          <TitleInput data={data} />
-          <BlockedBadge data={data} />
-          <CheckButton data={data} />
-        </div>
-        {item.description.trim() && <div className="pf-desc">{item.description}</div>}
-      </div>
-      <AddChildButton data={data} />
-      <DepHandles />
-      <TreeSourceHandle />
-    </div>
-  );
-});
-
-export const CategoryNode = memo(function CategoryNode({ data }: NodeProps<PlanNodeData>) {
   const { item, blocked, isLeaf } = data;
-  const cls = [
-    "pf-cat",
-    item.done ? "is-done" : "",
-    blocked && !item.done ? "is-blocked" : "",
-  ].join(" ");
+  const state = [item.done ? "is-done" : "", blocked && !item.done ? "is-blocked" : ""].join(" ");
+
+  if (isLeaf) {
+    return (
+      <div
+        className={`pf-node pf-task ${state}`}
+        style={{ "--item": COLOR_HEX[item.color] } as React.CSSProperties}
+      >
+        <CheckButton data={data} />
+        <div className="pf-body">
+          <div className="pf-row">
+            <TitleInput data={data} />
+            <BlockedBadge data={data} />
+          </div>
+          {item.description.trim() && <div className="pf-desc">{item.description}</div>}
+        </div>
+        <AddChildButton data={data} />
+        <DepHandles />
+      </div>
+    );
+  }
+
+  // A task with children acts as a parent/header: its subtasks live inside
+  // the same visual area, underneath and indented.
   return (
-    <div className={cls} style={{ "--item": COLOR_HEX[item.color] } as React.CSSProperties}>
-      <div className="pf-cat-header">
+    <div
+      className={`pf-taskbox ${state}`}
+      style={{ "--item": COLOR_HEX[item.color] } as React.CSSProperties}
+    >
+      <div className="pf-taskbox-header">
+        <CheckButton data={data} />
+        <div className="pf-body">
+          <div className="pf-row">
+            <TitleInput data={data} />
+            <BlockedBadge data={data} />
+          </div>
+          {item.description.trim() && <div className="pf-desc">{item.description}</div>}
+        </div>
+        <AddChildButton data={data} />
+      </div>
+      <DepHandles topOffset={20} />
+    </div>
+  );
+});
+
+export const GroupNode = memo(function GroupNode({ data }: NodeProps<PlanNodeData>) {
+  const { item, blocked, isLeaf } = data;
+  const state = [item.done ? "is-done" : "", blocked && !item.done ? "is-blocked" : ""].join(" ");
+  return (
+    <div
+      className={`pf-group ${state}`}
+      style={{ "--item": COLOR_HEX[item.color] } as React.CSSProperties}
+    >
+      <div className="pf-group-header">
         <Folder size={14} className="pf-type-icon" />
         <TitleInput data={data} />
         <BlockedBadge data={data} />
         <CheckButton data={data} />
         <AddChildButton data={data} />
       </div>
-      {isLeaf && <div className="pf-cat-empty">Empty category — use + to add items</div>}
+      {isLeaf && <div className="pf-group-empty">Empty group — use + to add tasks</div>}
       <DepHandles topOffset={22} />
     </div>
   );
@@ -260,7 +219,5 @@ export const CategoryNode = memo(function CategoryNode({ data }: NodeProps<PlanN
 
 export const nodeTypes = {
   task: TaskNode,
-  phase: PhaseNode,
-  requirement: RequirementNode,
-  category: CategoryNode,
+  group: GroupNode,
 };
