@@ -1,5 +1,5 @@
 import { ProjectList } from "./components/ProjectList";
-import { PlannerPage } from "./components/planner/PlannerPage";
+import { ProjectPage } from "./components/planner/ProjectPage";
 import { ToastHost } from "./components/Toast";
 import { useRoute } from "./lib/router";
 
@@ -7,7 +7,11 @@ export function App() {
   const route = useRoute();
   return (
     <>
-      {route.view === "project" ? <PlannerPage projectId={route.id} /> : <ProjectList />}
+      {route.view === "project" ? (
+        <ProjectPage projectId={route.id} view={route.sub} />
+      ) : (
+        <ProjectList />
+      )}
       <ToastHost />
     </>
   );

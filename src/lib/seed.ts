@@ -1,5 +1,6 @@
 import type { AppState, ColorKey, ID, ItemType, Project } from "./types";
 import { rollUpDone } from "./logic";
+import { dayToIso, todayDay } from "./schedule";
 
 interface SeedNode {
   type: ItemType;
@@ -11,6 +12,9 @@ interface SeedNode {
   after?: string[];
   /** Tag names (declared in SeedProjectTags). */
   tags?: string[];
+  /** Schedule offsets in days relative to "today" (end inclusive). */
+  start?: number;
+  end?: number;
   children?: SeedNode[];
 }
 
@@ -32,6 +36,7 @@ function buildProject(
   };
   const tagByName = new Map(project.tags.map((t) => [t.name, t.id]));
   const byTitle = new Map<string, ID>();
+  const today = todayDay(createdAt);
   let counter = 0;
 
   const add = (node: SeedNode, parentId: ID | null, order: number) => {
@@ -46,6 +51,8 @@ function buildProject(
       done: node.done ?? false,
       order,
       tagIds: (node.tags ?? []).flatMap((n) => (tagByName.has(n) ? [tagByName.get(n)!] : [])),
+      startDate: node.start !== undefined ? dayToIso(today + node.start) : undefined,
+      endDate: node.end !== undefined ? dayToIso(today + node.end) : undefined,
     });
     byTitle.set(node.title, itemId);
     node.children?.forEach((child, index) => add(child, itemId, index));
@@ -89,8 +96,14 @@ export function createDemoState(now: number): AppState {
             title: "Audit",
             color: "amber",
             children: [
-              { type: "task", title: "Inventory existing components", done: true },
-              { type: "task", title: "Collect brand assets", done: true },
+              {
+                type: "task",
+                title: "Inventory existing components",
+                done: true,
+                start: -10,
+                end: -8,
+              },
+              { type: "task", title: "Collect brand assets", done: true, start: -8, end: -6 },
             ],
           },
           {
@@ -99,17 +112,17 @@ export function createDemoState(now: number): AppState {
             color: "blue",
             after: ["Audit"],
             children: [
-              { type: "task", title: "Color & typography tokens", done: true },
+              { type: "task", title: "Color & typography tokens", done: true, start: -5, end: -3 },
               {
                 type: "task",
                 title: "Core component set",
                 description: "Buttons, forms, cards, navigation.",
                 children: [
-                  { type: "task", title: "Buttons & inputs", done: true },
-                  { type: "task", title: "Cards & navigation" },
+                  { type: "task", title: "Buttons & inputs", done: true, start: -3, end: -1 },
+                  { type: "task", title: "Cards & navigation", start: 0, end: 2 },
                 ],
               },
-              { type: "task", title: "Usage documentation" },
+              { type: "task", title: "Usage documentation", start: 3, end: 4 },
             ],
           },
         ],
@@ -136,7 +149,7 @@ export function createDemoState(now: number): AppState {
             title: "Content",
             color: "green",
             children: [
-              { type: "task", title: "Copywriting" },
+              { type: "task", title: "Copywriting", start: 5, end: 8 },
               { type: "task", title: "Product screenshots" },
             ],
           },

@@ -1,14 +1,27 @@
 import { useSyncExternalStore } from "react";
 
-export type Route = { view: "home" } | { view: "project"; id: string };
+export const PROJECT_VIEWS = ["canvas", "graph", "timeline", "map"] as const;
+export type ProjectView = (typeof PROJECT_VIEWS)[number];
+
+export type Route = { view: "home" } | { view: "project"; id: string; sub: ProjectView };
 
 function parse(hash: string): Route {
-  const match = /^#\/p\/([^/]+)/.exec(hash);
-  return match ? { view: "project", id: decodeURIComponent(match[1]) } : { view: "home" };
+  const match = /^#\/p\/([^/]+)(?:\/(graph|timeline|map))?/.exec(hash);
+  if (!match) return { view: "home" };
+  return {
+    view: "project",
+    id: decodeURIComponent(match[1]),
+    sub: (match[2] as ProjectView) ?? "canvas",
+  };
 }
 
 export function navigate(route: Route) {
-  window.location.hash = route.view === "home" ? "#/" : `#/p/${encodeURIComponent(route.id)}`;
+  if (route.view === "home") {
+    window.location.hash = "#/";
+    return;
+  }
+  const sub = route.sub === "canvas" ? "" : `/${route.sub}`;
+  window.location.hash = `#/p/${encodeURIComponent(route.id)}${sub}`;
 }
 
 function subscribe(listener: () => void): () => void {
