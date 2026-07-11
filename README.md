@@ -23,6 +23,23 @@ Two concepts, kept deliberately separate:
 Plus **tags**: simple colored labels (not containers) used purely for filtering and
 search.
 
+## Four views, one dataset
+
+The header switches between lenses on the same project — same data, same selection,
+same search/tag filter:
+
+- **Canvas** — the home view: nested boxes, dependency arrows, right-click editing.
+- **Graph** — hierarchy flattened away; only items with dependencies, layered top→down,
+  each dependent centered under its prerequisites. Drag between dots to add
+  dependencies here too.
+- **Timeline** — a real Gantt. Items can carry optional **start/end dates** (inspector →
+  Schedule); everything without dates is auto-planned: parents span their children,
+  dateless tasks start when their prerequisites end (dashed/faded bars). Drag a bar to
+  move it, drag its edges to resize — that materializes explicit dates. Includes month
+  and week scale, today line, dependency arrows and zoom.
+- **Mind map** — the whole tree fanned out around the project for ideation; right-click
+  a node to grow it.
+
 ## Features
 
 - **Projects** — create, rename, duplicate and delete from the home screen.

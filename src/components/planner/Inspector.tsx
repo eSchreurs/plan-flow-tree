@@ -9,6 +9,7 @@ import {
   computeProgress,
   itemMap,
 } from "@/lib/logic";
+import { formatDay, scheduleProject } from "@/lib/schedule";
 import { COLOR_HEX } from "@/lib/colors";
 import { addTag, deleteDep, deleteItem, toggleItemTag, updateItem } from "@/lib/store";
 import { TYPE_ICON } from "./nodes";
@@ -52,7 +53,10 @@ function ConfirmDeleteButton({ label, onDelete }: { label: string; onDelete: () 
 export function Inspector({ project, selection, onClose, onAddChild, onSelect }: InspectorProps) {
   if (!selection) return null;
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col overflow-y-auto border-l border-slate-200 bg-white">
+    <aside
+      className="flex w-[300px] shrink-0 flex-col overflow-y-auto border-l border-slate-200 bg-white"
+      data-testid="inspector"
+    >
       {selection.kind === "item" ? (
         <ItemPanel
           key={selection.id}
@@ -97,6 +101,7 @@ function ItemPanel({
 
   const children = childrenMap(project.items).get(item.id) ?? [];
   const progress = computeProgress(project.items).get(item.id);
+  const scheduled = scheduleProject(project.items, project.deps).entries.get(item.id);
   const blockers = blockingSources(project.items, project.deps, item.id);
   const childTypes = allowedChildTypes(item.type);
   const incoming = project.deps.filter((d) => d.target === item.id);
@@ -162,6 +167,50 @@ function ItemPanel({
           value={item.description}
           onChange={(e) => updateItem(project.id, item.id, { description: e.target.value })}
         />
+      </div>
+
+      <div>
+        <SectionLabel>Schedule</SectionLabel>
+        <div className="flex items-center gap-1.5">
+          <input
+            type="date"
+            value={item.startDate ?? ""}
+            onChange={(e) =>
+              updateItem(project.id, item.id, { startDate: e.target.value || undefined })
+            }
+            className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-[12px] text-slate-700 outline-none focus:border-blue-400"
+            aria-label="Start date"
+          />
+          <span className="text-[11px] text-slate-400">–</span>
+          <input
+            type="date"
+            value={item.endDate ?? ""}
+            onChange={(e) =>
+              updateItem(project.id, item.id, { endDate: e.target.value || undefined })
+            }
+            className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-[12px] text-slate-700 outline-none focus:border-blue-400"
+            aria-label="End date"
+          />
+          {(item.startDate || item.endDate) && (
+            <button
+              type="button"
+              onClick={() =>
+                updateItem(project.id, item.id, { startDate: undefined, endDate: undefined })
+              }
+              className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              title="Clear dates"
+              aria-label="Clear dates"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+        {!item.startDate && !item.endDate && scheduled && (
+          <p className="mt-1 text-[11px] text-slate-400">
+            Auto-planned: {formatDay(scheduled.start)} – {formatDay(scheduled.end - 1)}
+            {children.length > 0 ? " (from children)" : " (after its prerequisites)"}
+          </p>
+        )}
       </div>
 
       <div>

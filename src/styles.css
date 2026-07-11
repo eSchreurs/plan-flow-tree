@@ -173,6 +173,107 @@ body {
   transition: opacity 0.2s;
 }
 
+/* ---- dependency graph view: flat pill nodes ---- */
+.pf-gnode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--item) 10%, #fff);
+  border: 1px solid color-mix(in srgb, var(--item) 42%, #fff);
+  font-size: 12.5px;
+  transition: opacity 0.15s;
+}
+.pf-gnode.is-blocked {
+  opacity: 0.5;
+}
+.pf-gnode.is-done .pf-gnode-title {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+.pf-gnode-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--item);
+}
+.pf-gnode-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: #1e293b;
+}
+.react-flow__node.selected .pf-gnode {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--edge-select);
+}
+
+/* ---- mind map view ---- */
+.pf-mind {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 100%;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--item) 45%, #fff);
+  font-size: 12px;
+  transition: opacity 0.15s;
+}
+.pf-mind.is-group {
+  background: color-mix(in srgb, var(--item) 12%, #fff);
+  font-weight: 600;
+}
+.pf-mind.is-done .pf-mind-title {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+.pf-mind-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--item);
+}
+.pf-mind-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #1e293b;
+}
+.react-flow__node.selected .pf-mind {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--edge-select);
+}
+.pf-mind-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 16px;
+  border-radius: 16px;
+  background: #1e293b;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 4px 14px rgb(15 23 42 / 0.18);
+}
+
 .pf-lock {
   flex-shrink: 0;
   color: #b45309;

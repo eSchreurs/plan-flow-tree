@@ -199,7 +199,9 @@ export function addItem(
 export function updateItem(
   projectId: ID,
   itemId: ID,
-  patch: Partial<Pick<PlanItem, "title" | "description" | "color" | "tagIds">>,
+  patch: Partial<
+    Pick<PlanItem, "title" | "description" | "color" | "tagIds" | "startDate" | "endDate">
+  >,
 ) {
   withProject(projectId, (project) => {
     const item = project.items.find((i) => i.id === itemId);

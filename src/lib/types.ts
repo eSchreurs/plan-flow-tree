@@ -50,6 +50,10 @@ export interface PlanItem {
   order: number;
   /** Tags for filtering/search. */
   tagIds: ID[];
+  /** Optional schedule (ISO YYYY-MM-DD). Anything unset is derived: parents
+   * span their children, dateless leaves start after their prerequisites. */
+  startDate?: string;
+  endDate?: string;
 }
 
 export interface Dependency {

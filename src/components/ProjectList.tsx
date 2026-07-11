@@ -53,7 +53,7 @@ function ProjectCard({ project }: { project: Project }) {
   const [confirming, setConfirming] = useState(false);
   const progress = projectProgress(project);
   const percent = progress.total > 0 ? Math.round((100 * progress.done) / progress.total) : 0;
-  const open = () => navigate({ view: "project", id: project.id });
+  const open = () => navigate({ view: "project", id: project.id, sub: "canvas" });
 
   return (
     <div
@@ -128,7 +128,7 @@ export function ProjectList() {
 
   const handleCreate = () => {
     const id = createProject("Untitled project");
-    navigate({ view: "project", id });
+    navigate({ view: "project", id, sub: "canvas" });
   };
 
   return (

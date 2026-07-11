@@ -44,14 +44,21 @@ arrows.
     (clone → apply → re-roll-up → bump `updatedAt`). Fractional `order` values slot
     items between siblings without renumbering.
   - `migrate.ts` — one-way v1→v2 data migration.
-- `src/components/planner/` — React Flow canvas. Nodes/edges fully derived from the
-  store each render; the only feedback accepted from React Flow is selection changes.
-  Nodes are not draggable by design. Container nodes get the `pf-pass` class
-  (pointer-events pass-through) so canvas panning and gap right-clicks work inside
-  them; note that `group` is also a built-in React Flow node type whose default CSS is
-  reset in styles.css. `ContextMenu.tsx` drives all right-click editing;
-  `TreeDrawer.tsx` is the outline with HTML5 drag-and-drop reparenting via
-  `moveItem`.
+- `src/components/planner/` — `ProjectPage.tsx` owns shared state (selection, filter,
+  menus, drawer) and switches between four views (hash sub-routes `/graph`,
+  `/timeline`, `/map`): `CanvasView` (React Flow, editing home), `GraphView`
+  (flattened dependency graph via `lib/graphLayout.ts`), `TimelineView` (custom-DOM
+  Gantt driven by `lib/schedule.ts` — explicit dates win, parents span children,
+  dateless leaves start after prerequisites; bar drags materialize explicit dates;
+  `endDate` is inclusive in the model, exclusive inside the schedule engine), and
+  `MindMapView` (`lib/mindLayout.ts`). Nodes/edges are fully derived from the store;
+  the only feedback accepted from React Flow is selection changes (a select-change is
+  processed before deselects — RF emits them in array order). Nodes are not draggable
+  by design. Container nodes get the `pf-pass` class (pointer-events pass-through) so
+  canvas panning and gap right-clicks work inside them; note that `group` is also a
+  built-in React Flow node type whose default CSS is reset in styles.css.
+  `ContextMenu.tsx` drives all right-click editing; `TreeDrawer.tsx` is the outline
+  with HTML5 drag-and-drop reparenting via `moveItem`.
 
 ## Conventions
 
