@@ -139,7 +139,7 @@ export function ProjectList() {
           <div>
             <h1 className="text-[19px] font-bold text-slate-800">PlanFlow</h1>
             <p className="text-[12.5px] text-slate-500">
-              Lightweight visual planning — categories, requirements, phases &amp; tasks.
+              Lightweight visual planning — groups, nested tasks &amp; dependencies.
             </p>
           </div>
           <button

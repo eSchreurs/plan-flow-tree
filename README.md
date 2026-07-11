@@ -1,40 +1,47 @@
 # PlanFlow
 
-A lightweight, fast, standalone visual planning tool. Plan projects as a hierarchy of
-**Categories ⊃ Requirements ⊃ Phases ⊃ Tasks** on an infinite canvas that automatically
-keeps itself tidy.
+A lightweight, fast, standalone visual planning tool. Plan projects as **Groups of
+nested Tasks** on an infinite canvas that automatically keeps itself tidy.
 
 No backend, no accounts — everything lives in your browser's localStorage. Demo projects
 are seeded on first launch.
 
+## The model
+
+Two concepts, kept deliberately separate:
+
+- **Hierarchy is vertical containment.** A _Group_ is a top-level container. Inside it,
+  everything is a _Task_, and any task can hold unlimited child tasks — a task with
+  children becomes a parent/header whose subtasks live underneath it, indented, inside
+  the same visual box. Tasks can also live directly at the root.
+- **Flow is horizontal dependencies.** Drag from an item's right dot to another item to
+  say "this must finish first". When B depends on A, B is placed in a column to the
+  right of A and connected with a directional arrow — at every nesting level.
+
+Plus **tags**: simple colored labels (not containers) used purely for filtering and
+search.
+
 ## Features
 
-- **Projects** — create, rename, duplicate and delete projects from the home screen; each
-  project gets its own canvas.
-- **Optional hierarchy** — every layer can be skipped: tasks can live directly under a
-  category, at the root, wherever they make sense. The only rule is that a parent must be
-  a higher layer than its child.
-- **Done roll-up** — tasks (and other childless items) are checked off manually; anything
-  with children derives its state: all tasks done → phase done, all phases done →
-  requirement done, all requirements done → category done.
-- **Dependencies** — drag from an item's right dot to another item to say "this must
-  finish first". Works between any two items: task → task, phase → phase, requirement →
-  phase, category → task, you name it.
+- **Projects** — create, rename, duplicate and delete from the home screen.
+- **Done roll-up** — leaf tasks are checked off manually; anything with children derives
+  its state (all subtasks done → parent done → group done) and shows progress.
 - **Blocking** — an item with an unfinished dependency is greyed out and can't be
-  completed, and neither can anything inside it (a task in phase 2 waits for phase 1).
-  Dependency arrows are dashed amber while waiting and solid grey once satisfied.
-  Dependencies that would deadlock (directly or through the hierarchy) are rejected.
-- **Auto-layout** — every add/remove/change re-resolves the canvas into a clean
-  hierarchic overview: dependency chains flow left → right like a timeline, independent
-  siblings stack vertically, categories are containers, requirements are header cards,
-  phases are colored pills and tasks are checkable cards. No overlaps, no manual tidying.
-- **Per-item styling** — title, description and a color for every item via the inspector
-  panel.
-- **Right-click everything** — the canvas is driven by context menus: right-click inside
-  a category/requirement/phase to add items to it, right-click the gap between two items
-  to insert one exactly there, right-click empty canvas for root items, right-click a
-  node to add siblings, duplicate, mark done or delete, and right-click a dependency
-  arrow to remove it. Enter confirms the highlighted entry, Esc cancels.
+  completed, and neither can anything inside it. Pending dependency arrows are dashed
+  amber, satisfied ones solid grey. Dependencies that would deadlock (directly or
+  through the hierarchy) are rejected with an explanation.
+- **Auto-layout** — every change re-resolves the canvas: dependency chains flow left →
+  right like a timeline, independent siblings stack vertically, parents wrap their
+  children. Positions are never stored; no overlaps, no manual tidying.
+- **Right-click everything** — right-click inside a group/task to add there, in the gap
+  between two items to insert exactly there, on empty canvas for root items, on a node
+  for siblings/duplicate/done/delete, on a dependency arrow to remove it, on a tag chip
+  to delete the tag. Enter confirms the highlighted entry, Esc cancels.
+- **Tree drawer** — collapsible outline of the whole project for fast navigation
+  (click to jump), expand/collapse, and **drag-and-drop reparenting** (drop a task onto
+  a group, another task, or the project row to move it).
+- **Tags & search** — filter chips and a search box dim everything that doesn't match.
+- **Per-item styling** — title, description and color via the inspector panel.
 
 ## Getting started
 
@@ -72,25 +79,18 @@ runs from any URL — a domain root, a subfolder, or GitHub Pages — with no se
   the Actions tab). One-time setup: Settings → Pages → "Build and deployment" → Source:
   **GitHub Actions**. Note: on a free GitHub plan Pages requires a public repository.
 
-## Stack
-
-- [React 19](https://react.dev) + [Vite](https://vite.dev) — plain SPA, no SSR
-- [React Flow 11](https://reactflow.dev) — canvas, nodes, edges
-- [Tailwind CSS 4](https://tailwindcss.com) — chrome/UI styling
-- [lucide-react](https://lucide.dev) — icons
-- TypeScript, ESLint, Prettier
-
 ## How it's put together
 
-| Path                             | Purpose                                                            |
-| -------------------------------- | ------------------------------------------------------------------ |
-| `src/lib/types.ts`               | Data model: projects, items, dependencies, hierarchy ranks, colors |
-| `src/lib/logic.ts`               | Done roll-up, blocked computation, deadlock-safe dependency checks |
-| `src/lib/layout.ts`              | Deterministic auto-layout (dependency layers × sibling stacks)     |
-| `src/lib/store.ts`               | localStorage-backed store + all mutations                          |
-| `src/lib/seed.ts`                | Demo projects                                                      |
-| `src/components/planner/`        | Canvas page, node renderers, inspector panel                       |
-| `src/components/ProjectList.tsx` | Home screen                                                        |
+| Path                             | Purpose                                                                |
+| -------------------------------- | ---------------------------------------------------------------------- |
+| `src/lib/types.ts`               | Data model: projects, groups/tasks, dependencies, tags, colors         |
+| `src/lib/logic.ts`               | Done roll-up, blocking, deadlock-safe dependency & move validation     |
+| `src/lib/layout.ts`              | Deterministic auto-layout + right-click hit-testing                    |
+| `src/lib/store.ts`               | localStorage-backed store (`planflow.v2`) + all mutations              |
+| `src/lib/migrate.ts`             | v1 → v2 migration (requirements→groups, phases→tasks, categories→tags) |
+| `src/lib/seed.ts`                | Demo projects                                                          |
+| `src/components/planner/`        | Canvas, node renderers, context menu, tree drawer, inspector           |
+| `src/components/ProjectList.tsx` | Home screen                                                            |
 
 State is a single source of truth: node positions are never stored — the layout engine
 recomputes them from the hierarchy + dependencies on every change, which is what keeps

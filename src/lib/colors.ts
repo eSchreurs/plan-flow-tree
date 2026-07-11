@@ -21,5 +21,3 @@ export const COLOR_HEX: Record<ColorKey, string> = {
 export const EDGE_SATISFIED = "#94a3b8";
 /** Dependency edge still waiting on its prerequisite. */
 export const EDGE_PENDING = "#f59e0b";
-/** Parent → child tree connector. */
-export const EDGE_TREE = "#d4dae3";

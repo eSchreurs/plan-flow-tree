@@ -1,5 +1,5 @@
 import type { Dependency, ID, ItemType, PlanItem, Project } from "./types";
-import { ITEM_TYPES, TYPE_LABEL, TYPE_RANK } from "./types";
+import { TYPE_LABEL } from "./types";
 
 export function itemMap(items: PlanItem[]): Map<ID, PlanItem> {
   return new Map(items.map((i) => [i.id, i]));
@@ -17,18 +17,19 @@ export function childrenMap(items: PlanItem[]): Map<ID | null, PlanItem[]> {
   return map;
 }
 
+/** Groups hold tasks; tasks hold tasks. Groups never nest. */
 export function canParent(parent: ItemType, child: ItemType): boolean {
-  return TYPE_RANK[parent] < TYPE_RANK[child];
+  return child === "task" && (parent === "group" || parent === "task");
 }
 
 /** Item types that may be created under the given parent (null = root). */
 export function allowedChildTypes(parent: ItemType | null): ItemType[] {
-  if (parent === null) return [...ITEM_TYPES];
-  return ITEM_TYPES.filter((t) => canParent(parent, t));
+  if (parent === null) return ["group", "task"];
+  return ["task"];
 }
 
 /**
- * Recompute container completion bottom-up: an item with children is done
+ * Recompute parent completion bottom-up: an item with children is done
  * exactly when all of its children are done. Leaves keep their manual state.
  * Mutates and returns `items`.
  */
@@ -58,7 +59,7 @@ export interface BlockInfo {
 
 /**
  * An item is blocked while any of its dependencies is unfinished, or while
- * any of its ancestors is blocked (a task inside a blocked phase cannot be
+ * any of its ancestors is blocked (a subtask of a blocked task cannot be
  * worked on either).
  */
 export function computeBlocked(items: PlanItem[], deps: Dependency[]): Map<ID, BlockInfo> {
@@ -114,15 +115,45 @@ export function blockingSources(items: PlanItem[], deps: Dependency[], id: ID): 
 }
 
 /**
- * Validate adding the dependency `source → target`. Returns an error message
- * or null when the edge is fine.
- *
- * Deadlock detection uses the combined "must finish before" graph:
+ * Cycle check over the combined "must finish before" graph:
  *   - dependency s → t: s must finish before t
  *   - hierarchy child → parent: a parent is done only when all children are
- * Adding s → t is rejected if t can already reach s in that graph — e.g. a
- * dependency from an item onto its own descendant's container, or any cycle
- * of dependencies threaded through the hierarchy.
+ */
+function reaches(
+  items: PlanItem[],
+  deps: Dependency[],
+  from: ID,
+  to: ID,
+  reparent?: { itemId: ID; parentId: ID | null },
+): boolean {
+  const adjacency = new Map<ID, ID[]>();
+  const addEdge = (a: ID, b: ID) => {
+    const list = adjacency.get(a) ?? [];
+    list.push(b);
+    adjacency.set(a, list);
+  };
+  for (const dep of deps) addEdge(dep.source, dep.target);
+  for (const item of items) {
+    const parentId = reparent && item.id === reparent.itemId ? reparent.parentId : item.parentId;
+    if (parentId) addEdge(item.id, parentId);
+  }
+  const stack = [from];
+  const seen = new Set<ID>();
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (node === to) return true;
+    if (seen.has(node)) continue;
+    seen.add(node);
+    for (const next of adjacency.get(node) ?? []) stack.push(next);
+  }
+  return false;
+}
+
+/**
+ * Validate adding the dependency `source → target`. Returns an error message
+ * or null when the edge is fine. Adding s → t is rejected if t can already
+ * reach s in the combined graph — e.g. a dependency from an item onto its own
+ * descendant, or any cycle of dependencies threaded through the hierarchy.
  */
 export function validateDep(
   items: PlanItem[],
@@ -135,28 +166,41 @@ export function validateDep(
   if (!byId.has(source) || !byId.has(target)) return "Unknown item.";
   if (deps.some((d) => d.source === source && d.target === target))
     return "That dependency already exists.";
+  if (reaches(items, deps, target, source)) {
+    const s = byId.get(source)!;
+    const t = byId.get(target)!;
+    return `“${t.title}” already needs to finish before “${s.title}” — that would deadlock.`;
+  }
+  return null;
+}
 
-  const adjacency = new Map<ID, ID[]>();
-  const addEdge = (from: ID, to: ID) => {
-    const list = adjacency.get(from) ?? [];
-    list.push(to);
-    adjacency.set(from, list);
-  };
-  for (const dep of deps) addEdge(dep.source, dep.target);
-  for (const item of items) if (item.parentId) addEdge(item.id, item.parentId);
-
-  const stack = [target];
-  const seen = new Set<ID>();
-  while (stack.length > 0) {
-    const node = stack.pop()!;
-    if (node === source) {
-      const s = byId.get(source)!;
-      const t = byId.get(target)!;
-      return `“${t.title}” already needs to finish before “${s.title}” — that would deadlock.`;
-    }
-    if (seen.has(node)) continue;
-    seen.add(node);
-    for (const next of adjacency.get(node) ?? []) stack.push(next);
+/**
+ * Validate moving `itemId` under `newParentId` (null = root). Returns an
+ * error message or null when the move is fine.
+ */
+export function validateMove(
+  items: PlanItem[],
+  deps: Dependency[],
+  itemId: ID,
+  newParentId: ID | null,
+): string | null {
+  const byId = itemMap(items);
+  const item = byId.get(itemId);
+  if (!item) return "Unknown item.";
+  if (item.parentId === newParentId) return null;
+  if (item.type === "group") {
+    return newParentId === null ? null : "Groups always stay top-level.";
+  }
+  if (newParentId !== null) {
+    const parent = byId.get(newParentId);
+    if (!parent) return "Unknown target.";
+    if (!canParent(parent.type, item.type))
+      return `A ${TYPE_LABEL[item.type].toLowerCase()} cannot go inside a ${TYPE_LABEL[parent.type].toLowerCase()}.`;
+    if (subtreeIds(items, itemId).has(newParentId)) return "An item cannot be moved into itself.";
+    // The new child→parent edge is parentId → up; a deadlock appears when the
+    // new parent chain already has to finish before the item does.
+    if (reaches(items, deps, newParentId, itemId, { itemId, parentId: null }))
+      return "That move would deadlock with existing dependencies.";
   }
   return null;
 }
@@ -218,13 +262,39 @@ export function subtreeIds(items: PlanItem[], id: ID): Set<ID> {
   return ids;
 }
 
+/**
+ * Items that stay highlighted for the given search text + tag filter, or
+ * null when no filter is active. A match lights up its ancestors (context)
+ * and its whole subtree (children belong to their parent).
+ */
+export function filterVisible(items: PlanItem[], query: string, tagIds: Set<ID>): Set<ID> | null {
+  const q = query.trim().toLowerCase();
+  if (!q && tagIds.size === 0) return null;
+
+  const byId = itemMap(items);
+  const matches = items.filter((item) => {
+    const textOk = !q || `${item.title}\n${item.description}`.toLowerCase().includes(q);
+    const tagOk = tagIds.size === 0 || item.tagIds.some((t) => tagIds.has(t));
+    return textOk && tagOk;
+  });
+
+  const visible = new Set<ID>();
+  for (const match of matches) {
+    for (const id of subtreeIds(items, match.id)) visible.add(id);
+    let current = match.parentId ? byId.get(match.parentId) : undefined;
+    const guard = new Set<ID>();
+    while (current && !guard.has(current.id)) {
+      guard.add(current.id);
+      visible.add(current.id);
+      current = current.parentId ? byId.get(current.parentId) : undefined;
+    }
+  }
+  return visible;
+}
+
 export function describeDep(items: PlanItem[], dep: Dependency): string {
   const byId = itemMap(items);
   const s = byId.get(dep.source);
   const t = byId.get(dep.target);
   return `“${s?.title ?? "?"}” must finish before “${t?.title ?? "?"}”`;
-}
-
-export function typeLabel(type: ItemType): string {
-  return TYPE_LABEL[type];
 }

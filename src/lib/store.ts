@@ -1,10 +1,12 @@
 import { useSyncExternalStore } from "react";
 import type { AppState, ColorKey, ID, ItemType, PlanItem, Project } from "./types";
 import { COLOR_KEYS, TYPE_LABEL } from "./types";
-import { computeBlocked, rollUpDone, subtreeIds, validateDep } from "./logic";
+import { computeBlocked, rollUpDone, subtreeIds, validateDep, validateMove } from "./logic";
+import { migrateV1 } from "./migrate";
 import { createDemoState } from "./seed";
 
-const STORAGE_KEY = "planflow.v1";
+const STORAGE_KEY = "planflow.v2";
+const LEGACY_KEY = "planflow.v1";
 
 function uid(): ID {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -13,12 +15,35 @@ function uid(): ID {
   return Math.random().toString(36).slice(2, 10);
 }
 
+function isV2State(parsed: unknown): parsed is AppState {
+  const state = parsed as AppState;
+  return (
+    !!state &&
+    Array.isArray(state.projects) &&
+    state.projects.every(
+      (p) =>
+        Array.isArray(p.items) &&
+        Array.isArray(p.deps) &&
+        Array.isArray(p.tags) &&
+        p.items.every((i) => i.type === "group" || i.type === "task"),
+    )
+  );
+}
+
 function load(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as AppState;
-      if (parsed && Array.isArray(parsed.projects)) return parsed;
+      const parsed = JSON.parse(raw);
+      if (isV2State(parsed)) return parsed;
+    }
+    const legacy = localStorage.getItem(LEGACY_KEY);
+    if (legacy) {
+      const migrated = migrateV1(JSON.parse(legacy));
+      if (migrated) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+        return migrated;
+      }
     }
   } catch {
     // fall through to demo data
@@ -73,7 +98,7 @@ export function createProject(name: string): ID {
   commit({
     projects: [
       ...state.projects,
-      { id, name, items: [], deps: [], createdAt: now, updatedAt: now },
+      { id, name, items: [], deps: [], tags: [], createdAt: now, updatedAt: now },
     ],
   });
   return id;
@@ -96,14 +121,17 @@ export function duplicateProject(projectId: ID): ID | null {
   const id = uid();
   const idMap = new Map<ID, ID>();
   for (const item of copy.items) idMap.set(item.id, `${id}-${item.id}`);
+  for (const tag of copy.tags) idMap.set(tag.id, `${id}-${tag.id}`);
   copy.id = id;
   copy.name = `${source.name} (copy)`;
   copy.createdAt = Date.now();
   copy.updatedAt = Date.now();
+  copy.tags = copy.tags.map((tag) => ({ ...tag, id: idMap.get(tag.id)! }));
   copy.items = copy.items.map((item) => ({
     ...item,
     id: idMap.get(item.id)!,
     parentId: item.parentId ? (idMap.get(item.parentId) ?? null) : null,
+    tagIds: item.tagIds.map((t) => idMap.get(t) ?? t),
   }));
   copy.deps = copy.deps.map((dep, index) => ({
     id: `${id}-d${index}`,
@@ -124,8 +152,8 @@ export function restoreDemoProjects() {
 
 // ---------- items ----------
 
-/** Rotating default colors so new containers are distinguishable at a glance. */
-const CONTAINER_COLOR_ROTATION: ColorKey[] = [
+/** Rotating default colors so new groups are distinguishable at a glance. */
+const GROUP_COLOR_ROTATION: ColorKey[] = [
   "blue",
   "violet",
   "green",
@@ -139,7 +167,7 @@ const CONTAINER_COLOR_ROTATION: ColorKey[] = [
 function defaultColor(type: ItemType, items: PlanItem[]): ColorKey {
   if (type === "task") return "slate";
   const count = items.filter((i) => i.type === type).length;
-  return CONTAINER_COLOR_ROTATION[count % CONTAINER_COLOR_ROTATION.length];
+  return GROUP_COLOR_ROTATION[count % GROUP_COLOR_ROTATION.length];
 }
 
 export function addItem(
@@ -154,7 +182,7 @@ export function addItem(
     project.items.push({
       id,
       type,
-      parentId,
+      parentId: type === "group" ? null : parentId,
       title: opts?.title ?? `New ${TYPE_LABEL[type].toLowerCase()}`,
       description: "",
       color: defaultColor(type, project.items),
@@ -162,9 +190,47 @@ export function addItem(
       // Fractional orders let an item slot in between two siblings without
       // renumbering the rest.
       order: opts?.order ?? Math.max(-1, ...siblings.map((s) => s.order)) + 1,
+      tagIds: [],
     });
   });
   return id;
+}
+
+export function updateItem(
+  projectId: ID,
+  itemId: ID,
+  patch: Partial<Pick<PlanItem, "title" | "description" | "color" | "tagIds">>,
+) {
+  withProject(projectId, (project) => {
+    const item = project.items.find((i) => i.id === itemId);
+    if (item) Object.assign(item, patch);
+  });
+}
+
+/**
+ * Toggle a leaf's completion. Parents derive their state from children and
+ * blocked items cannot be completed (they can still be un-completed).
+ */
+export function toggleDone(projectId: ID, itemId: ID) {
+  withProject(projectId, (project) => {
+    const item = project.items.find((i) => i.id === itemId);
+    if (!item) return;
+    const hasChildren = project.items.some((i) => i.parentId === itemId);
+    if (hasChildren) return;
+    if (!item.done) {
+      const blocked = computeBlocked(project.items, project.deps).get(itemId);
+      if (blocked?.blocked) return;
+    }
+    item.done = !item.done;
+  });
+}
+
+export function deleteItem(projectId: ID, itemId: ID) {
+  withProject(projectId, (project) => {
+    const doomed = subtreeIds(project.items, itemId);
+    project.items = project.items.filter((i) => !doomed.has(i.id));
+    project.deps = project.deps.filter((d) => !doomed.has(d.source) && !doomed.has(d.target));
+  });
 }
 
 /** Deep-copy an item (and its subtree + internal dependencies) right after itself. */
@@ -204,40 +270,55 @@ export function duplicateItem(projectId: ID, itemId: ID): ID | null {
   return idMap.get(itemId) ?? null;
 }
 
-export function updateItem(
-  projectId: ID,
-  itemId: ID,
-  patch: Partial<Pick<PlanItem, "title" | "description" | "color">>,
-) {
+/** Reparent an item (drawer drag-and-drop). Returns an error message or null. */
+export function moveItem(projectId: ID, itemId: ID, newParentId: ID | null): string | null {
+  const project = state.projects.find((p) => p.id === projectId);
+  if (!project) return "Unknown project.";
+  const error = validateMove(project.items, project.deps, itemId, newParentId);
+  if (error) return error;
+  withProject(projectId, (draft) => {
+    const item = draft.items.find((i) => i.id === itemId);
+    if (!item || item.parentId === newParentId) return;
+    const siblings = draft.items.filter((i) => i.parentId === newParentId);
+    item.parentId = newParentId;
+    item.order = Math.max(-1, ...siblings.map((s) => s.order)) + 1;
+  });
+  return null;
+}
+
+// ---------- tags ----------
+
+export function addTag(projectId: ID, name: string, color?: ColorKey): ID {
+  const id = uid();
   withProject(projectId, (project) => {
-    const item = project.items.find((i) => i.id === itemId);
-    if (item) Object.assign(item, patch);
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const palette = COLOR_KEYS.filter((c) => c !== "slate");
+    project.tags.push({
+      id,
+      name: trimmed,
+      color: color ?? palette[project.tags.length % palette.length],
+    });
+  });
+  return id;
+}
+
+export function deleteTag(projectId: ID, tagId: ID) {
+  withProject(projectId, (project) => {
+    project.tags = project.tags.filter((t) => t.id !== tagId);
+    for (const item of project.items) {
+      item.tagIds = item.tagIds.filter((t) => t !== tagId);
+    }
   });
 }
 
-/**
- * Toggle a leaf's completion. Containers derive their state from children and
- * blocked items cannot be completed (they can still be un-completed).
- */
-export function toggleDone(projectId: ID, itemId: ID) {
+export function toggleItemTag(projectId: ID, itemId: ID, tagId: ID) {
   withProject(projectId, (project) => {
     const item = project.items.find((i) => i.id === itemId);
     if (!item) return;
-    const hasChildren = project.items.some((i) => i.parentId === itemId);
-    if (hasChildren) return;
-    if (!item.done) {
-      const blocked = computeBlocked(project.items, project.deps).get(itemId);
-      if (blocked?.blocked) return;
-    }
-    item.done = !item.done;
-  });
-}
-
-export function deleteItem(projectId: ID, itemId: ID) {
-  withProject(projectId, (project) => {
-    const doomed = subtreeIds(project.items, itemId);
-    project.items = project.items.filter((i) => !doomed.has(i.id));
-    project.deps = project.deps.filter((d) => !doomed.has(d.source) && !doomed.has(d.target));
+    item.tagIds = item.tagIds.includes(tagId)
+      ? item.tagIds.filter((t) => t !== tagId)
+      : [...item.tagIds, tagId];
   });
 }
 

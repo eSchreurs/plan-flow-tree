@@ -91,31 +91,35 @@ body {
   opacity: 0.7;
 }
 
-/* ---- phase: soft colored pill ---- */
-.pf-phase {
-  background: color-mix(in srgb, var(--item) 12%, #fff);
-  border-color: color-mix(in srgb, var(--item) 38%, #fff);
+/* ---- parent task: a task with children wraps them in its own panel ---- */
+.pf-taskbox {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--item) 26%, #e2e8f0);
+  background: color-mix(in srgb, var(--item) 5%, #fff);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+  transition: opacity 0.15s;
 }
-.pf-phase .pf-title {
-  font-weight: 600;
-  font-size: 12.5px;
-  color: color-mix(in srgb, var(--item) 60%, #0f172a);
+.pf-taskbox-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 4px 12px 0;
+  pointer-events: all;
+  cursor: default;
 }
-
-/* ---- requirement: header card with accent bar ---- */
-.pf-req {
-  border-left: 4px solid var(--item);
-  border-top-left-radius: 8px;
-  border-bottom-left-radius: 8px;
-}
-.pf-req .pf-title {
+.pf-taskbox-header .pf-title {
   font-weight: 650;
   font-size: 13px;
-  letter-spacing: 0.01em;
+}
+.pf-taskbox-header .pf-desc {
+  -webkit-line-clamp: 1;
 }
 
-/* ---- category: group container ---- */
-.pf-cat {
+/* ---- group: top-level container ---- */
+.pf-group {
   width: 100%;
   height: 100%;
   border-radius: 14px;
@@ -123,7 +127,7 @@ body {
   background: color-mix(in srgb, var(--item) 5%, #fff);
   transition: opacity 0.15s;
 }
-.pf-cat-header {
+.pf-group-header {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -133,26 +137,24 @@ body {
   pointer-events: all;
   cursor: default;
 }
-.pf-cat-header .pf-type-icon {
-  margin-top: 0;
-}
-.pf-cat-header .pf-title {
+.pf-group-header .pf-title {
   font-weight: 700;
   font-size: 13.5px;
   color: color-mix(in srgb, var(--item) 55%, #0f172a);
 }
-.pf-cat-empty {
+.pf-group-empty {
   padding: 16px 14px;
   font-size: 11.5px;
   color: #94a3b8;
 }
 
-/* Category boxes must not swallow canvas panning: the node ignores pointer
-   events, the header and handles re-enable them. */
-.react-flow__node-category {
+/* Container boxes must not swallow canvas panning or right-clicks in the
+   gaps between children: the node ignores pointer events, the header and
+   handles re-enable them. */
+.react-flow__node.pf-pass {
   pointer-events: none !important;
 }
-.react-flow__node-category .react-flow__handle {
+.react-flow__node.pf-pass .react-flow__handle {
   pointer-events: all;
 }
 
@@ -160,8 +162,15 @@ body {
 .is-blocked {
   opacity: 0.45;
 }
-.pf-cat.is-blocked {
+.pf-group.is-blocked,
+.pf-taskbox.is-blocked {
   opacity: 0.55;
+}
+
+/* Filtered out by search/tags. */
+.react-flow__node.pf-dim {
+  opacity: 0.12;
+  transition: opacity 0.2s;
 }
 
 .pf-lock {
@@ -172,7 +181,8 @@ body {
 }
 
 .react-flow__node.selected .pf-node,
-.react-flow__node.selected .pf-cat {
+.react-flow__node.selected .pf-group,
+.react-flow__node.selected .pf-taskbox {
   box-shadow:
     0 0 0 2px #fff,
     0 0 0 4px var(--edge-select);
@@ -241,7 +251,8 @@ body {
   transition: opacity 0.12s;
 }
 .pf-node:hover .pf-add-btn,
-.pf-cat-header:hover .pf-add-btn,
+.pf-group-header:hover .pf-add-btn,
+.pf-taskbox-header:hover .pf-add-btn,
 .pf-add-btn:focus-visible,
 .react-flow__node.selected .pf-add-btn {
   opacity: 1;
@@ -289,6 +300,24 @@ body {
 }
 
 /* ================= React Flow overrides ================= */
+
+/* "group" is also a built-in React Flow node type — neutralize its default
+   chrome so only our own container styling shows. */
+.react-flow__node-group {
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 14px;
+  box-shadow: none;
+  width: auto;
+  height: auto;
+}
+.react-flow__node-group.selected,
+.react-flow__node-group:focus,
+.react-flow__node-group:focus-visible {
+  box-shadow: none;
+  outline: none;
+}
 
 .react-flow__handle.pf-handle {
   width: 9px;
