@@ -11,6 +11,8 @@ export interface PlanNodeData {
   projectId: ID;
   item: PlanItem;
   isLeaf: boolean;
+  /** Renders as a box (groups + top-level parent tasks). Deep parents stay cards. */
+  isContainer: boolean;
   /** Effectively blocked (own or inherited) and not yet done. */
   blocked: boolean;
   progress: Progress | null;
@@ -150,10 +152,13 @@ function DepHandles({ topOffset }: { topOffset?: number }) {
 }
 
 export const TaskNode = memo(function TaskNode({ data }: NodeProps<PlanNodeData>) {
-  const { item, blocked, isLeaf } = data;
+  const { item, blocked, isLeaf, isContainer } = data;
   const state = [item.done ? "is-done" : "", blocked && !item.done ? "is-blocked" : ""].join(" ");
 
-  if (isLeaf) {
+  // Top-level parent tasks wrap their subtree in a box; everything else —
+  // leaves AND deeper parents — stays a card (deep children hang below it,
+  // connected with branch lines).
+  if (!isContainer) {
     return (
       <div
         className={`pf-node pf-task ${state}`}
@@ -169,12 +174,19 @@ export const TaskNode = memo(function TaskNode({ data }: NodeProps<PlanNodeData>
         </div>
         <AddChildButton data={data} />
         <DepHandles />
+        {!isLeaf && (
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="tree"
+            className="pf-handle-hidden"
+            style={{ left: 16 }}
+          />
+        )}
       </div>
     );
   }
 
-  // A task with children acts as a parent/header: its subtasks live inside
-  // the same visual area, underneath and indented.
   return (
     <div
       className={`pf-taskbox ${state}`}
